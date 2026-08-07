@@ -16,9 +16,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (files.length === 0) {
-  console.error(
-    "使い方: npm run import -- --context <コンテキスト名> <file.md> [file2.md ...]",
-  );
+  console.error("使い方: npm run import -- --context <コンテキスト名> <file.md> [file2.md ...]");
   process.exit(1);
 }
 
@@ -46,9 +44,7 @@ for (const file of files) {
         const dup = duplicates.length ? ` (重複候補 ${duplicates.length}件)` : "";
         console.error(`    + [${c.type}] ${c.title} → draft ${id}${dup}`);
       } catch (e) {
-        console.error(
-          `    ! [${c.type}] ${c.title} 登録失敗: ${(e as Error).message}`,
-        );
+        console.error(`    ! [${c.type}] ${c.title} 登録失敗: ${(e as Error).message}`);
       }
     }
   }

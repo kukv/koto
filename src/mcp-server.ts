@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { hybridSearch } from "./search.js";
 import {
   addRelation,
   getKnowledge,
@@ -11,6 +10,7 @@ import {
   proposeUpdate,
   upsertContext,
 } from "./knowledge.js";
+import { hybridSearch } from "./search.js";
 
 const server = new McpServer({ name: "koto", version: "0.1.0" });
 
@@ -23,8 +23,7 @@ const text = (v: unknown) => ({
   ],
 });
 
-const fail = (e: unknown) =>
-  text(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+const fail = (e: unknown) => text(`エラー: ${e instanceof Error ? e.message : String(e)}`);
 
 const aliasSchema = z.object({
   name: z.string(),
@@ -42,13 +41,8 @@ server.registerTool(
     inputSchema: {
       query: z.string().describe("検索クエリ(日本語可)"),
       context: z.string().optional().describe("コンテキスト(部署・領域)で絞り込み"),
-      type: z
-        .enum(["term", "rule", "decision", "requirement", "faq", "event"])
-        .optional(),
-      include_drafts: z
-        .boolean()
-        .optional()
-        .describe("trueで未承認(draft)も検索対象に含める"),
+      type: z.enum(["term", "rule", "decision", "requirement", "faq", "event"]).optional(),
+      include_drafts: z.boolean().optional().describe("trueで未承認(draft)も検索対象に含める"),
       limit: z.number().int().min(1).max(30).optional(),
     },
   },
@@ -72,8 +66,7 @@ server.registerTool(
   "get_knowledge",
   {
     title: "知識の詳細取得",
-    description:
-      "知識レコード1件の全文と、関連グラフ(関連用語・ルール)を1ホップ展開して取得する。",
+    description: "知識レコード1件の全文と、関連グラフ(関連用語・ルール)を1ホップ展開して取得する。",
     inputSchema: {
       id: z.string().uuid(),
       expand_relations: z.boolean().optional().describe("既定true"),
@@ -147,10 +140,7 @@ server.registerTool(
       type: z.enum(["term", "rule", "decision", "requirement", "faq", "event"]),
       context: z.string().describe("コンテキスト(部署・領域)"),
       title: z.string().describe("日本語名"),
-      english_name: z
-        .string()
-        .optional()
-        .describe("コード・テーブル・APIで使う正式英語名"),
+      english_name: z.string().optional().describe("コード・テーブル・APIで使う正式英語名"),
       body: z
         .string()
         .describe(
@@ -233,9 +223,7 @@ server.registerTool(
   },
   async (args) => {
     try {
-      return text(
-        await addRelation(args.from_id, args.to_id, args.label, args.cardinality),
-      );
+      return text(await addRelation(args.from_id, args.to_id, args.label, args.cardinality));
     } catch (e) {
       return fail(e);
     }

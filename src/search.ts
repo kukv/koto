@@ -20,12 +20,7 @@ const FILTERS = `($2::text is null or context = $2)
 export async function hybridSearch(query: string, opts: SearchOptions = {}) {
   const limit = opts.limit ?? 10;
   const vec = await embed(query);
-  const base = [
-    query,
-    opts.context ?? null,
-    opts.type ?? null,
-    opts.includeDrafts ?? false,
-  ];
+  const base = [query, opts.context ?? null, opts.type ?? null, opts.includeDrafts ?? false];
 
   if (vec) {
     const sql = `

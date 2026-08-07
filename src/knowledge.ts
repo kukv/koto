@@ -1,13 +1,7 @@
 import { pool } from "./db.js";
 import { embed, toVectorLiteral } from "./embeddings.js";
 
-export type KnowledgeType =
-  | "term"
-  | "rule"
-  | "decision"
-  | "requirement"
-  | "faq"
-  | "event";
+export type KnowledgeType = "term" | "rule" | "decision" | "requirement" | "faq" | "event";
 
 export interface Alias {
   name: string;
@@ -28,11 +22,7 @@ export interface ProposeInput {
 }
 
 /** 近似重複の検出: 同名/別名の完全一致 + 埋め込み類似 */
-export async function findDuplicates(
-  title: string,
-  context: string,
-  vec: number[] | null,
-) {
+export async function findDuplicates(title: string, context: string, vec: number[] | null) {
   const seen = new Map<string, Record<string, unknown>>();
 
   const byName = await pool.query(
@@ -69,9 +59,7 @@ export async function findDuplicates(
 
 /** 新しい知識を draft として提案する(承認されるまで検索の既定対象外) */
 export async function propose(input: ProposeInput) {
-  const vec = await embed(
-    `${input.title} ${input.english_name ?? ""} ${input.body}`,
-  );
+  const vec = await embed(`${input.title} ${input.english_name ?? ""} ${input.body}`);
   const duplicates = await findDuplicates(input.title, input.context, vec);
   const notes =
     [
@@ -84,10 +72,9 @@ export async function propose(input: ProposeInput) {
       .join("\n") || null;
 
   // 未知のコンテキストはマスタに自動登録される(owner未設定として可視化され、後で埋める)
-  await pool.query(
-    `insert into contexts (name) values ($1) on conflict (name) do nothing`,
-    [input.context],
-  );
+  await pool.query(`insert into contexts (name) values ($1) on conflict (name) do nothing`, [
+    input.context,
+  ]);
 
   const res = await pool.query(
     `insert into knowledge
@@ -113,11 +100,7 @@ export async function propose(input: ProposeInput) {
 }
 
 /** 既存レコードへの更新提案。履歴はトリガで自動保存、needs_review が立つ */
-export async function proposeUpdate(
-  id: string,
-  changes: Partial<ProposeInput>,
-  note?: string,
-) {
+export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, note?: string) {
   const cur = await pool.query(`select * from knowledge where id = $1`, [id]);
   if (cur.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
   const row = cur.rows[0];
@@ -130,9 +113,7 @@ export async function proposeUpdate(
     examples: changes.examples ?? row.examples,
   };
   const contentChanged =
-    changes.title !== undefined ||
-    changes.body !== undefined ||
-    changes.english_name !== undefined;
+    changes.title !== undefined || changes.body !== undefined || changes.english_name !== undefined;
   const vec = contentChanged
     ? await embed(`${merged.title} ${merged.english_name ?? ""} ${merged.body}`)
     : null;
@@ -234,11 +215,7 @@ export async function upsertContext(
 }
 
 /** 検証レベルの引き上げ(internal=社内確認済 / expert=専門家確認済) */
-export async function setVerification(
-  id: string,
-  level: "internal" | "expert",
-  by?: string,
-) {
+export async function setVerification(id: string, level: "internal" | "expert", by?: string) {
   await pool.query(
     `update knowledge
         set verification = $2, verified_by = $3, verified_at = now(),

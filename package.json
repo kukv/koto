@@ -11,7 +11,9 @@
     "mcp": "tsx src/mcp-server.ts",
     "import": "tsx src/import/run-import.ts",
     "review": "tsx src/review-cli.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
@@ -19,6 +21,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.6",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
