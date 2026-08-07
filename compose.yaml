@@ -3,28 +3,28 @@ services:
     # PGroonga 公式イメージに pgvector が同梱されていないため、両拡張入りの
     # 公式イメージは存在しない。inline build で追加インストールする。
     build:
-      context: ./db
+      context: ./docker/db
       dockerfile_inline: |
         FROM groonga/pgroonga:latest-debian-18
         RUN apt-get update \
          && apt-get install -y --no-install-recommends postgresql-18-pgvector \
          && rm -rf /var/lib/apt/lists/*
     environment:
-      POSTGRES_USER: knowledge
-      POSTGRES_PASSWORD: knowledge
-      POSTGRES_DB: knowledge
+      POSTGRES_USER: koto
+      POSTGRES_PASSWORD: koto
+      POSTGRES_DB: koto
     ports:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
+      - ./docker/db/init:/docker-entrypoint-initdb.d
 
   db-backup:
     image: postgres:18
     depends_on:
       - db
     environment:
-      PGPASSWORD: knowledge
+      PGPASSWORD: koto
     volumes:
       - ./backups:/backups
     # 日次で pg_dump(カスタム形式)、14日より古いものは削除
@@ -33,8 +33,8 @@ services:
       - -c
       - |
         while true; do
-          pg_dump -h db -U knowledge -d knowledge -Fc \
-            -f "/backups/knowledge_$$(date +%Y%m%d_%H%M%S).dump" \
+          pg_dump -h db -U koto -d koto -Fc \
+            -f "/backups/koto_$$(date +%Y%m%d_%H%M%S).dump" \
             && find /backups -name '*.dump' -mtime +14 -delete
           sleep 86400
         done

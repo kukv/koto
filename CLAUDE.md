@@ -17,7 +17,7 @@ pnpm run review list|show|approve|verify|reject   # レビュー CLI
 
 ## 構成
 
-- `db/init/001_schema.sql` — スキーマ。変更は `db/migrations/` に番号順で追加(既存マイグレーションは変更しない)
+- `docker/db/init/001_schema.sql` — スキーマ。変更は `docker/db/migrations/` に番号順で追加(既存マイグレーションは変更しない)
 - `src/knowledge.ts` — propose / 承認 / 重複検出の中核
 - `src/search.ts` — PGroonga + pgvector の RRF ハイブリッド検索
 - `src/mcp-server.ts` — MCP ツール8本の定義

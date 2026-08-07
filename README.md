@@ -7,8 +7,8 @@
 構成: Postgres + PGroonga(日本語全文検索) + pgvector(埋め込み) / TypeScript製MCPサーバ / 文書インポートパイプライン / レビューCLI
 
 ```
-compose.yaml            DB(PGroonga + pgvector)+ 日次バックアップ
-db/init/001_schema.sql  スキーマ(knowledge / relations / revisions)
+compose.yaml                   DB(PGroonga + pgvector)+ 日次バックアップ
+docker/db/init/001_schema.sql  スキーマ(knowledge / relations / revisions)
 src/mcp-server.ts       MCPサーバ(8ツール)
 src/import/             文書 → 知識候補(draft)の抽出パイプライン
 src/review-cli.ts       draft承認用CLI
@@ -25,7 +25,7 @@ cp .env.example .env             # キーを記入
 DBは日次で `./backups/` に pg_dump(カスタム形式、14日分保持)されます。復元は:
 
 ```bash
-docker compose exec -T db pg_restore -U knowledge -d knowledge --clean < backups/<ファイル名>.dump
+docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファイル名>.dump
 ```
 
 .env で最低限必要なもの:
@@ -36,8 +36,8 @@ docker compose exec -T db pg_restore -U knowledge -d knowledge --clean < backups
 旧版のスキーマで初期化済みのDBには、マイグレーションを番号順に適用:
 
 ```bash
-docker compose exec -T db psql -U knowledge -d knowledge < db/migrations/002_add_event_type.sql
-docker compose exec -T db psql -U knowledge -d knowledge < db/migrations/003_contexts_verification.sql
+docker compose exec -T db psql -U koto -d koto < docker/db/migrations/002_add_event_type.sql
+docker compose exec -T db psql -U koto -d koto < docker/db/migrations/003_contexts_verification.sql
 ```
 
 ## MCPサーバの接続
@@ -46,7 +46,7 @@ Claude Code:
 
 ```bash
 claude mcp add koto \
-  --env DATABASE_URL=postgres://knowledge:knowledge@localhost:5432/knowledge \
+  --env DATABASE_URL=postgres://koto:koto@localhost:5432/koto \
   --env OPENAI_API_KEY=sk-... \
   -- npx tsx /絶対パス/koto/src/mcp-server.ts
 ```
@@ -60,7 +60,7 @@ Claude Desktop (claude_desktop_config.json):
       "command": "npx",
       "args": ["tsx", "/絶対パス/koto/src/mcp-server.ts"],
       "env": {
-        "DATABASE_URL": "postgres://knowledge:knowledge@localhost:5432/knowledge",
+        "DATABASE_URL": "postgres://koto:koto@localhost:5432/koto",
         "OPENAI_API_KEY": "sk-..."
       }
     }
