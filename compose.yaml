@@ -1,14 +1,6 @@
 services:
   db:
-    # PGroonga 公式イメージに pgvector が同梱されていないため、両拡張入りの
-    # 公式イメージは存在しない。inline build で追加インストールする。
-    build:
-      context: ./docker/db
-      dockerfile_inline: |
-        FROM groonga/pgroonga:latest-debian-18
-        RUN apt-get update \
-         && apt-get install -y --no-install-recommends postgresql-18-pgvector \
-         && rm -rf /var/lib/apt/lists/*
+    build: ./docker/db
     environment:
       POSTGRES_USER: koto
       POSTGRES_PASSWORD: koto
