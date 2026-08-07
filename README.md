@@ -7,7 +7,7 @@
 構成: Postgres + PGroonga(日本語全文検索) + pgvector(埋め込み) / TypeScript製MCPサーバ / 文書インポートパイプライン / レビューCLI
 
 ```
-docker-compose.yml      DB(PGroonga + pgvector)
+compose.yaml            DB(PGroonga + pgvector)+ 日次バックアップ
 db/init/001_schema.sql  スキーマ(knowledge / relations / revisions)
 src/mcp-server.ts       MCPサーバ(8ツール)
 src/import/             文書 → 知識候補(draft)の抽出パイプライン
@@ -18,8 +18,14 @@ src/review-cli.ts       draft承認用CLI
 
 ```bash
 docker compose up -d --build     # DB起動(初回はスキーマ自動適用)
-npm install
+pnpm install
 cp .env.example .env             # キーを記入
+```
+
+DBは日次で `./backups/` に pg_dump(カスタム形式、14日分保持)されます。復元は:
+
+```bash
+docker compose exec -T db pg_restore -U knowledge -d knowledge --clean < backups/<ファイル名>.dump
 ```
 
 .env で最低限必要なもの:
@@ -69,7 +75,7 @@ Claude Desktop (claude_desktop_config.json):
 **導線1: 文書からの初期投入**
 
 ```bash
-npm run import -- --context sales docs/仕様書.md wiki/用語集.md
+pnpm run import --context sales docs/仕様書.md wiki/用語集.md
 ```
 
 抽出された候補はすべて `draft` + `needs_review` で入ります。文書に書いてあったというだけでは承認されません(社内文書は古い・間違っている前提)。抽出時に読み取れなかった点は `review_notes` に「要確認」として残り、近似重複(同名・別名一致、埋め込み類似)も自動検出されます。
@@ -83,11 +89,11 @@ npm run import -- --context sales docs/仕様書.md wiki/用語集.md
 **レビュー(承認ゲート)**
 
 ```bash
-npm run review -- list                             # レビュー待ち一覧
-npm run review -- show <id>                        # 詳細(関連・要確認事項・重複候補)
-npm run review -- approve <id> [確認者名]           # 承認 → 検証レベル internal
-npm run review -- verify <id> expert [確認者名]     # 専門家確認済に引き上げ
-npm run review -- reject <id>                      # deprecated化(物理削除はしない)
+pnpm run review list                             # レビュー待ち一覧
+pnpm run review show <id>                        # 詳細(関連・要確認事項・重複候補)
+pnpm run review approve <id> [確認者名]           # 承認 → 検証レベル internal
+pnpm run review verify <id> expert [確認者名]     # 専門家確認済に引き上げ
+pnpm run review reject <id>                      # deprecated化(物理削除はしない)
 ```
 
 承認済み(approved)だけが検索のデフォルト対象です。検証レベルは3段階(none=未検証 / internal=社内確認済 / expert=専門家確認済)で、レコードの内容が更新されると自動でnoneに戻ります(専門家確認は旧版に対するものだから)。
