@@ -1,0 +1,35 @@
+services:
+  db:
+    build: ./docker/db
+    environment:
+      POSTGRES_USER: koto
+      POSTGRES_PASSWORD: koto
+      POSTGRES_DB: koto
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d
+
+  db-backup:
+    image: postgres:18
+    depends_on:
+      - db
+    environment:
+      PGPASSWORD: koto
+    volumes:
+      - ./backups:/backups
+    # 日次で pg_dump(カスタム形式)、14日より古いものは削除
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while true; do
+          pg_dump -h db -U koto -d koto -Fc \
+            -f "/backups/koto_$$(date +%Y%m%d_%H%M%S).dump" \
+            && find /backups -name '*.dump' -mtime +14 -delete
+          sleep 86400
+        done
+
+volumes:
+  db-data:

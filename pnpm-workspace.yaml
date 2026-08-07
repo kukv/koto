@@ -1,0 +1,15 @@
+# --- サプライチェーン強化 (bright-room/repository-fanout の設定に準拠) ---
+# 公開から 7 日 (10080 分) 未満のバージョンは推移的依存も含めインストールしない
+minimumReleaseAge: 10080
+# パッケージの信頼レベル (provenance) が前回より下がったらインストールを止める
+trustPolicy: no-downgrade
+# 未承認のビルドスクリプトを持つ依存があれば install を非ゼロ終了で失敗させる
+strictDepBuilds: true
+# 推移的依存が git / tarball URL 等の exotic source を使うのを禁止（直接依存のみ可）
+blockExoticSubdeps: true
+# peer 依存の欠落・不整合があれば install を失敗させる
+strictPeerDependencies: true
+
+# tsx が依存する esbuild はネイティブバイナリの取得に postinstall が必要
+allowBuilds:
+  esbuild: true
