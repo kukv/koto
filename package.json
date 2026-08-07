@@ -1,0 +1,23 @@
+{
+  "name": "koto",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mcp": "tsx src/mcp-server.ts",
+    "import": "tsx src/import/run-import.ts",
+    "review": "tsx src/review-cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "pg": "^8.13.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
