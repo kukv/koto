@@ -1,0 +1,9 @@
+{
+  "name": "@kukv/koto-tsconfig",
+  "version": "0.1.0",
+  "description": "Shared TypeScript config for koto packages",
+  "files": ["base.json"],
+  "publishConfig": {
+    "access": "public"
+  }
+}

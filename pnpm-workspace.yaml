@@ -1,3 +1,6 @@
+packages:
+  - packages/*
+
 # --- サプライチェーン強化 (bright-room/repository-fanout の設定に準拠) ---
 # 公開から 7 日 (10080 分) 未満のバージョンは推移的依存も含めインストールしない
 minimumReleaseAge: 10080
