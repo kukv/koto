@@ -9,13 +9,13 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm run build",
+    "typecheck": "pnpm run build && pnpm -r run typecheck:tests",
     "mcp": "pnpm --filter @kukv/koto-mcp start",
     "import": "pnpm --filter @kukv/koto-import start",
     "review": "pnpm --filter @kukv/koto-cli start",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",

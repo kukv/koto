@@ -73,5 +73,16 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Start database (PGroonga + pgvector)
+        run: docker compose up -d --build
+      - name: Wait for database
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T db pg_isready -U koto -d koto && exit 0
+            sleep 2
+          done
+          echo "database not ready" >&2
+          docker compose logs db
+          exit 1
       - name: Test
-        run: pnpm test # vitest run --passWithNoTests
+        run: pnpm test # vitest run(koto_test を作り直して単体+DB統合を検証)
