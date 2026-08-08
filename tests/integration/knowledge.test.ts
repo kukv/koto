@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { after, beforeEach, describe, test } from "node:test";
-import { findDuplicates, propose, proposeUpdate } from "../../src/knowledge.js";
+import {
+  addRelation,
+  findDuplicates,
+  getKnowledge,
+  listContexts,
+  pendingReviews,
+  propose,
+  proposeUpdate,
+  setVerification,
+  upsertContext,
+} from "../../src/knowledge.js";
 import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 
 beforeEach(truncateAll);
@@ -116,5 +126,91 @@ describe("proposeUpdate", () => {
     );
     assert.equal(res.rowCount, 1);
     assert.equal(res.rows[0].snapshot.body, "旧本文");
+  });
+});
+
+describe("getKnowledge / addRelation", () => {
+  test("存在しない id は null", async () => {
+    assert.equal(await getKnowledge("00000000-0000-0000-0000-000000000000"), null);
+  });
+
+  test("関連が両方向に 1 ホップ展開される", async () => {
+    const orderId = await seedKnowledge({ context: "sales", title: "受注確定", type: "event" });
+    const stockId = await seedKnowledge({ context: "sales", title: "在庫" });
+    await addRelation(orderId, stockId, "対象", "1..*");
+
+    const fromSide = (await getKnowledge(orderId)) as { relations: Record<string, unknown>[] };
+    assert.equal(fromSide.relations.length, 1);
+    assert.equal(fromSide.relations[0].direction, "out");
+    assert.equal(fromSide.relations[0].title, "在庫");
+    assert.equal(fromSide.relations[0].label, "対象");
+
+    const toSide = (await getKnowledge(stockId)) as { relations: Record<string, unknown>[] };
+    assert.equal(toSide.relations[0].direction, "in");
+    assert.equal(toSide.relations[0].title, "受注確定");
+  });
+
+  test("同じ関連の重複登録は無視される", async () => {
+    const a = await seedKnowledge({ context: "sales", title: "A" });
+    const b = await seedKnowledge({ context: "sales", title: "B" });
+    await addRelation(a, b, "含む");
+    await addRelation(a, b, "含む");
+    const res = await pool.query("select count(*) from knowledge_relations");
+    assert.equal(Number(res.rows[0].count), 1);
+  });
+});
+
+describe("upsertContext", () => {
+  test("新規登録と、未指定項目を維持した更新", async () => {
+    await upsertContext("sales", { description: "販売", owner: "営業部" });
+    const updated = await upsertContext("sales", { expert: "税理士" });
+    assert.equal(updated.description, "販売"); // 未指定でも維持される
+    assert.equal(updated.owner, "営業部");
+    assert.equal(updated.expert, "税理士");
+  });
+});
+
+describe("setVerification", () => {
+  test("検証レベルが設定され needs_review が下りる", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query("update knowledge set needs_review = true where id = $1", [id]);
+    await setVerification(id, "internal", "田中");
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verification, "internal");
+    assert.equal(row.verified_by, "田中");
+    assert.notEqual(row.verified_at, null);
+    assert.equal(row.needs_review, false);
+  });
+});
+
+describe("listContexts", () => {
+  test("コンテキストごとの集計が返る", async () => {
+    await seedKnowledge({ context: "sales", title: "受注", status: "approved" });
+    await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+    const rows = await listContexts();
+    const sales = rows.find((r: { context: string }) => r.context === "sales");
+    assert.ok(sales);
+    assert.equal(Number(sales.approved), 1);
+    assert.equal(Number(sales.draft), 1);
+    assert.ok(sales.types.includes("term"));
+  });
+});
+
+describe("pendingReviews", () => {
+  test("draft と needs_review のレコードだけが返る", async () => {
+    const draftId = await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+    const flaggedId = await seedKnowledge({
+      context: "sales",
+      title: "要確認",
+      status: "approved",
+    });
+    await pool.query("update knowledge set needs_review = true where id = $1", [flaggedId]);
+    await seedKnowledge({ context: "sales", title: "確定済み", status: "approved" });
+
+    const rows = await pendingReviews();
+    const ids = rows.map((r: { id: string }) => r.id);
+    assert.ok(ids.includes(draftId));
+    assert.ok(ids.includes(flaggedId));
+    assert.equal(rows.length, 2);
   });
 });
