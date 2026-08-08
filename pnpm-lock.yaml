@@ -7,35 +7,88 @@ settings:
 importers:
 
   .:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: 1.30.0
-        version: 1.30.0(zod@4.4.3)
-      pg:
-        specifier: 8.22.0
-        version: 8.22.0
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.6
         version: 2.5.6
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.1))
+
+  packages/cli:
+    dependencies:
+      '@kukv/koto-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@kukv/koto-tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  packages/core:
+    dependencies:
+      pg:
+        specifier: 8.22.0
+        version: 8.22.0
+    devDependencies:
+      '@kukv/koto-tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
       '@types/pg':
         specifier: 8.20.1
         version: 8.20.1
-      tsx:
-        specifier: 4.23.1
-        version: 4.23.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.1))
+
+  packages/import:
+    dependencies:
+      '@kukv/koto-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@kukv/koto-tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  packages/mcp-server:
+    dependencies:
+      '@kukv/koto-core':
+        specifier: workspace:*
+        version: link:../core
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(zod@4.4.3)
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@kukv/koto-tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  packages/tsconfig: {}
 
 packages:
 
@@ -1722,6 +1775,7 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.1
       '@esbuild/win32-ia32': 0.28.1
       '@esbuild/win32-x64': 0.28.1
+    optional: true
 
   escape-html@1.0.3: {}
 
@@ -2162,6 +2216,7 @@ snapshots:
       esbuild: 0.28.1
     optionalDependencies:
       fsevents: 2.3.3
+    optional: true
 
   type-is@2.1.0:
     dependencies:

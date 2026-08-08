@@ -1,0 +1,29 @@
+{
+  "name": "@kukv/koto-import",
+  "version": "0.1.0",
+  "description": "koto document importer: extract knowledge candidates (draft) via Claude API",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": ["dist"],
+  "bin": {
+    "koto-import": "dist/run-import.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/run-import.js"
+  },
+  "dependencies": {
+    "@kukv/koto-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@kukv/koto-tsconfig": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

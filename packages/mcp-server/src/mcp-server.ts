@@ -1,16 +1,17 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
+#!/usr/bin/env node
 import {
   addRelation,
   getKnowledge,
+  hybridSearch,
   listContexts,
   pendingReviews,
   propose,
   proposeUpdate,
   upsertContext,
-} from "./knowledge.js";
-import { hybridSearch } from "./search.js";
+} from "@kukv/koto-core";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 
 const server = new McpServer({ name: "koto", version: "0.1.0" });
 
