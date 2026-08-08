@@ -1,0 +1,58 @@
+name: security
+
+# セキュリティ検査(bright-room/repository-fanout の security.yml を koto 向けに調整)。
+# - hidden-unicode: 不可視 Unicode / Trojan Source 検査。プロンプト文字列を扱うため ts/tsx も対象
+# - sca: 依存の既知脆弱性検査。脆弱性 DB は後から更新されるため週次でも実行する(schedule 時は sca のみ)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 0 * * 1" # 週次(月曜 00:00 UTC)
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # 不可視 Unicode / Trojan Source(全テキストファイル・言語非依存)
+  hidden-unicode:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: scan source files
+        run: |
+          npx --yes anti-trojan-source@1.12.0 --verbose \
+            --files='**/*.{ts,tsx,js,jsx,mjs,cjs,sql,sh,toml,yml,yaml,json,md}'
+          npx --yes anti-trojan-source@1.12.0 --verbose \
+            --files='.github/**/*.{yml,yaml,md,json}'
+      - name: scan AI rules files
+        run: |
+          npx --yes anti-trojan-source@1.12.0 --verbose \
+            --files='**/{CLAUDE.md,AGENTS.md,.cursorrules,.clinerules,.windsurfrules,*.mdc,copilot-instructions.md}'
+          npx --yes anti-trojan-source@1.12.0 --verbose \
+            --files='.claude/**/*.md'
+
+  # 多エコシステム SCA(lockfile を再帰自動検出)
+  sca:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: google/osv-scanner-action/osv-scanner-action@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+        with:
+          scan-args: |-
+            --recursive
+            --include-git-root
+            ./
