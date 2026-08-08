@@ -1,0 +1,32 @@
+{
+  "name": "@kukv/koto-core",
+  "version": "0.1.0",
+  "description": "koto domain layer: knowledge propose/approve, hybrid search (PGroonga + pgvector)",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@kukv/koto-tsconfig": "workspace:*",
+    "@types/node": "24.13.3",
+    "@types/pg": "8.20.1",
+    "typescript": "5.9.3"
+  }
+}
