@@ -9,7 +9,8 @@ Koto — 業務知識基盤。ユビキタス言語(言 = term)と業務イベ�
 ```bash
 docker compose up -d --build   # DB 起動(PGroonga + pgvector、初回スキーマ自動適用)
 pnpm install                   # パッケージ管理は pnpm(npm は使わない)
-pnpm run typecheck             # tsc --noEmit。変更後は必ず通すこと
+pnpm run build                 # 全パッケージを依存順にビルド(実行前に必須)
+pnpm run typecheck             # build の別名(tsc が型検査を兼ねる)。変更後は必ず通すこと
 pnpm run mcp                   # MCP サーバ(stdio)起動
 pnpm run import --context <ctx> <files...>   # 文書 → 知識候補(draft)抽出
 pnpm run review list|show|approve|verify|reject   # レビュー CLI
@@ -18,14 +19,15 @@ pnpm run review list|show|approve|verify|reject   # レビュー CLI
 ## 構成
 
 - `docker/db/init/001_schema.sql` — スキーマ。変更は `docker/db/migrations/` に番号順で追加(既存マイグレーションは変更しない)
-- `src/knowledge.ts` — propose / 承認 / 重複検出の中核
-- `src/search.ts` — PGroonga + pgvector の RRF ハイブリッド検索
-- `src/mcp-server.ts` — MCP ツール8本の定義
-- `src/import/` — Claude API による文書からの知識抽出
+- `packages/tsconfig/` — 共有 tsconfig(@kukv/koto-tsconfig)。各パッケージが extends で参照
+- `packages/core/` — 共有ドメイン層(@kukv/koto-core)。propose / 承認 / 重複検出 / RRF ハイブリッド検索
+- `packages/mcp-server/` — MCP ツール8本の定義(@kukv/koto-mcp)
+- `packages/import/` — Claude API による文書からの知識抽出(@kukv/koto-import)
+- `packages/cli/` — レビュー CLI(@kukv/koto-cli)
 
 ## 規約
 
-- **名前は koto に統一**: package 名・MCP サーバ名・MCP 登録名はすべて `koto`
+- **名前は koto に統一**: MCP サーバ名・MCP 登録名は `koto`。npm パッケージは `@kukv/koto-*`
 - **1概念 = 1レコード**: RAG 的な機械的チャンク分割はしない
 - **エージェントの書き込みは必ず draft**: `status=draft` + `needs_review=true` で入れる。approved に直接入れない
 - **物理削除しない**: 廃止は `deprecated` + 後継エッジ。履歴は revisions トリガが自動保存

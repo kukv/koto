@@ -9,9 +9,11 @@
 ```
 compose.yaml                   DB(PGroonga + pgvector)+ 日次バックアップ
 docker/db/init/001_schema.sql  スキーマ(knowledge / relations / revisions)
-src/mcp-server.ts       MCPサーバ(8ツール)
-src/import/             文書 → 知識候補(draft)の抽出パイプライン
-src/review-cli.ts       draft承認用CLI
+packages/core/          共有ドメイン層(propose・検索)
+packages/mcp-server/    MCPサーバ(8ツール)
+packages/import/        文書 → 知識候補(draft)の抽出パイプライン
+packages/cli/           draft承認用CLI
+packages/tsconfig/      共有tsconfig
 ```
 
 ## セットアップ
@@ -42,13 +44,15 @@ docker compose exec -T db psql -U koto -d koto < docker/db/migrations/003_contex
 
 ## MCPサーバの接続
 
+事前に `pnpm build` を実行してください。
+
 Claude Code:
 
 ```bash
 claude mcp add koto \
   --env DATABASE_URL=postgres://koto:koto@localhost:5432/koto \
   --env OPENAI_API_KEY=sk-... \
-  -- npx tsx /絶対パス/koto/src/mcp-server.ts
+  -- node /絶対パス/koto/packages/mcp-server/dist/mcp-server.js
 ```
 
 Claude Desktop (claude_desktop_config.json):
@@ -57,8 +61,8 @@ Claude Desktop (claude_desktop_config.json):
 {
   "mcpServers": {
     "koto": {
-      "command": "npx",
-      "args": ["tsx", "/絶対パス/koto/src/mcp-server.ts"],
+      "command": "node",
+      "args": ["/絶対パス/koto/packages/mcp-server/dist/mcp-server.js"],
       "env": {
         "DATABASE_URL": "postgres://koto:koto@localhost:5432/koto",
         "OPENAI_API_KEY": "sk-..."
