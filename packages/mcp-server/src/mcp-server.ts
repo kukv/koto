@@ -150,7 +150,7 @@ server.registerTool(
       aliases: z.array(aliasSchema).optional(),
       examples: z.array(z.string()).optional(),
       source: z
-        .record(z.unknown())
+        .record(z.string(), z.unknown())
         .optional()
         .describe('由来 例: {"kind":"hearing","ref":"営業部 田中さん 2026-08-07"}'),
       review_notes: z.string().optional().describe("要確認事項があれば記載"),

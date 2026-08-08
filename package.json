@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.14.0",
+  "packageManager": "pnpm@11.20.0",
   "engines": {
     "node": ">=24"
   },
@@ -14,9 +14,11 @@
     "import": "pnpm --filter @kukv/koto-import start",
     "review": "pnpm --filter @kukv/koto-cli start",
     "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "lint:fix": "biome check --write .",
+    "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.6"
+    "@biomejs/biome": "2.5.6",
+    "vitest": "^4.1.10"
   }
 }

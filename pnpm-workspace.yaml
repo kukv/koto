@@ -12,3 +12,7 @@ strictDepBuilds: true
 blockExoticSubdeps: true
 # peer 依存の欠落・不整合があれば install を失敗させる
 strictPeerDependencies: true
+
+# vitest が依存する esbuild はネイティブバイナリの取得に postinstall が必要
+allowBuilds:
+  esbuild: true

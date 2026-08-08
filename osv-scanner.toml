@@ -1,0 +1,30 @@
+# security.yml の sca ジョブ(osv-scanner)が自動適用する設定。
+# 修正版(hono 4.12.34 / nanoid 3.3.17、いずれも 2026-08-03 公開)は
+# pnpm-workspace.yaml の minimumReleaseAge (7日) により 2026-08-10 まで
+# インストールできないため、期限付きで一時除外する。
+# 期限切れ後は再検出されるので、その時点で lockfile を更新して本ファイルの記載を削除すること。
+
+[[IgnoredVulns]]
+id = "GHSA-54fx-42gc-7vw4"
+ignoreUntil = 2026-08-12
+reason = "hono 4.12.34 で修正済み。minimumReleaseAge の解禁待ち"
+
+[[IgnoredVulns]]
+id = "GHSA-79qm-7rj5-m7r9"
+ignoreUntil = 2026-08-12
+reason = "hono 4.12.34 で修正済み。minimumReleaseAge の解禁待ち"
+
+[[IgnoredVulns]]
+id = "GHSA-8j4g-w8fx-2239"
+ignoreUntil = 2026-08-12
+reason = "hono 4.12.34 で修正済み。minimumReleaseAge の解禁待ち"
+
+[[IgnoredVulns]]
+id = "GHSA-f23p-vx2j-j53r"
+ignoreUntil = 2026-08-12
+reason = "hono 4.12.34 で修正済み。minimumReleaseAge の解禁待ち"
+
+[[IgnoredVulns]]
+id = "GHSA-2v37-7h3g-55p8"
+ignoreUntil = 2026-08-12
+reason = "nanoid 3.3.17 で修正済み。minimumReleaseAge の解禁待ち"
