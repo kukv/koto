@@ -25,7 +25,7 @@ pnpm run review list|show|approve|verify|reject   # レビュー CLI
 - `packages/mcp-server/` — MCP ツール8本の定義(@kukv/koto-mcp)
 - `packages/import/` — Claude API による文書からの知識抽出(@kukv/koto-import)
 - `packages/cli/` — レビュー CLI(@kukv/koto-cli)
-- `.claude/skills/koto-import/` — エージェント対話での文書インポート手順(主経路。抽出規約はここが正)
+- `skills/koto-import/` — エージェント対話での文書インポート手順(主経路。抽出規約はここが正。`.claude/skills/` からシンボリックリンクで参照)
 
 ## 規約
 
