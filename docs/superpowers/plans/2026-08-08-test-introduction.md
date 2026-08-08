@@ -12,8 +12,8 @@
 
 ## 実行状況(2026-08-08 時点)
 
-- Task 1: 実装済み(commit `d1304ee`)。typecheck / lint は通過。**未完了**: Docker 権限の問題で `pnpm test`(Step 7 の DB 検証)とタスクレビューが未実施。再開時はまず `docker compose up -d && pnpm test` でスモークテストを検証してから Task 1 のレビュー → Task 2 以降へ進むこと
-- Task 2〜6: 未着手
+- Task 1〜6: すべて実装・レビュー承認済み(全 38 テスト PASS、typecheck / lint 通過、開発 DB 非汚染を確認)
+- 付随修正: Docker イメージのビルド不能(`postgresql-18-pgdg-pgroonga` へのパッケージ名変更)と postgres:18 のマウント規約変更に対応(commit `48ea048`)
 
 ## Global Constraints
 
