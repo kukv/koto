@@ -47,7 +47,8 @@ koto/
 | @kukv/koto-cli | @kukv/koto-core |
 
 - workspace 内参照は `workspace:*`（publish 時に実バージョンへ変換される）。
-- devDependencies（typescript, tsx, @types/*）は各パッケージが必要な分だけ持つ。biome はルートのみ。
+- devDependencies（typescript, @types/*）は各パッケージが必要な分だけ持つ。biome はルートのみ。
+- **tsx は廃止する**: 全エントリポイントが `dist/` の JS を node で直接実行する形になるため不要。付随して `pnpm-workspace.yaml` の `allowBuilds.esbuild`（tsx のためだけの許可）も削除する（supply-chain 設定の緩和ではなく許可リストの縮小）。
 
 ## npm 公開対応の体裁
 
