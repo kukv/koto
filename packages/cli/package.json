@@ -1,0 +1,29 @@
+{
+  "name": "@kukv/koto-cli",
+  "version": "0.1.0",
+  "description": "koto review CLI: list/show/approve/verify/reject draft knowledge",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": ["dist"],
+  "bin": {
+    "koto-review": "dist/review-cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/review-cli.js"
+  },
+  "dependencies": {
+    "@kukv/koto-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@kukv/koto-tsconfig": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3"
+  }
+}
