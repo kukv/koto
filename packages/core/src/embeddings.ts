@@ -2,13 +2,13 @@ export const EMBEDDING_DIM = 1536;
 
 /**
  * テキストの埋め込みを生成する。
- * EMBEDDING_PROVIDER=none またはキー未設定なら null を返し、
- * 呼び出し側はキーワード検索のみにフォールバックする。
+ * デフォルトは無効(課金ゼロ構成)。EMBEDDING_PROVIDER=openai を明示した場合のみ生成し、
+ * それ以外・キー未設定では null を返して呼び出し側はキーワード検索のみにフォールバックする。
  */
 export async function embed(text: string): Promise<number[] | null> {
-  const provider = process.env.EMBEDDING_PROVIDER ?? "openai";
+  const provider = process.env.EMBEDDING_PROVIDER ?? "none";
   const key = process.env.OPENAI_API_KEY;
-  if (provider === "none" || !key) return null;
+  if (provider !== "openai" || !key) return null;
 
   const res = await fetch("https://api.openai.com/v1/embeddings", {
     method: "POST",

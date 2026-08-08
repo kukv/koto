@@ -31,10 +31,10 @@ DBは日次で `./backups/` に pg_dump(カスタム形式、14日分保持)さ�
 docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファイル名>.dump
 ```
 
-.env で最低限必要なもの:
+**初期構成は API キーゼロで動きます。** DB(docker)さえ起動していれば、インポート(エージェント対話)・検索・レビューのすべてに課金や API キーは不要です。以下はすべてオプトイン:
 
-- `ANTHROPIC_API_KEY` — 文書インポートの知識抽出に使用
-- `OPENAI_API_KEY` — 埋め込み生成(text-embedding-3-small)。用意できない場合は `EMBEDDING_PROVIDER=none` でキーワード検索のみで動作します
+- `EMBEDDING_PROVIDER=openai` + `OPENAI_API_KEY` — 埋め込み生成(text-embedding-3-small)を有効化。ベクトル検索と近似重複検出が加わる。未設定(デフォルト)ではキーワード検索(PGroonga)のみで動作
+- `EXTRACT_PROVIDER` / `EXTRACT_MODEL` / `ANTHROPIC_API_KEY` — バッチインポート CLI(後述のオプション経路)用
 
 旧版のスキーマで初期化済みのDBには、マイグレーションを番号順に適用:
 
@@ -52,8 +52,8 @@ Claude Code:
 ```bash
 claude mcp add koto \
   --env DATABASE_URL=postgres://koto:koto@localhost:5432/koto \
-  --env OPENAI_API_KEY=sk-... \
   -- node /絶対パス/koto/packages/mcp-server/dist/mcp-server.js
+# 埋め込みを使う場合のみ: --env EMBEDDING_PROVIDER=openai --env OPENAI_API_KEY=sk-...
 ```
 
 Claude Desktop (claude_desktop_config.json):
@@ -65,8 +65,7 @@ Claude Desktop (claude_desktop_config.json):
       "command": "node",
       "args": ["/絶対パス/koto/packages/mcp-server/dist/mcp-server.js"],
       "env": {
-        "DATABASE_URL": "postgres://koto:koto@localhost:5432/koto",
-        "OPENAI_API_KEY": "sk-..."
+        "DATABASE_URL": "postgres://koto:koto@localhost:5432/koto"
       }
     }
   }
@@ -77,13 +76,21 @@ Claude Desktop (claude_desktop_config.json):
 
 ## 運用の流れ
 
-**導線1: 文書からの初期投入**
+**導線1: 文書からの初期投入(エージェント対話)**
+
+koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼みます:
+
+> この docs/仕様書.md を koto に取り込んで。context は sales で
+
+抽出はエージェント自身が行うため、koto 側で LLM API を呼ぶことはありません(課金ゼロ)。抽出の型(コト起点・event の定型見出し・推測の分離など)はリポジトリ同梱のスキル `.claude/skills/koto-import/` が与えます。候補はすべて `draft` + `needs_review` で入ります。文書に書いてあったというだけでは承認されません(社内文書は古い・間違っている前提)。読み取れなかった点は `review_notes` に「要確認」として残り、近似重複(同名・別名一致、埋め込み類似)も自動検出されます。
+
+大量ファイルの一括処理や、エージェントを介せない環境(API Only)向けにはバッチ CLI もあります:
 
 ```bash
 pnpm run import --context sales docs/仕様書.md wiki/用語集.md
 ```
 
-抽出された候補はすべて `draft` + `needs_review` で入ります。文書に書いてあったというだけでは承認されません(社内文書は古い・間違っている前提)。抽出時に読み取れなかった点は `review_notes` に「要確認」として残り、近似重複(同名・別名一致、埋め込み類似)も自動検出されます。
+抽出は Claude Code CLI(`claude`、サブスクリプション認証)を優先し、なければ `ANTHROPIC_API_KEY`(従量課金)にフォールバックします。`EXTRACT_PROVIDER`(`cli`/`api`)で強制、`EXTRACT_MODEL` でモデル指定(未設定なら CLI は Claude Code のデフォルト、API は `claude-sonnet-4-6`)。
 
 **導線2: ヒアリング**
 
