@@ -30,9 +30,7 @@ const SYSTEM = `あなたは業務システムのドメイン知識を抽出す�
 - 同じ言葉が文脈により別物を指す兆候(多義語)があれば、uncertaintiesに必ず記載する。
 - eventのbodyは次の見出し構成で書く: ## 概要 / ## アクター(誰が起こすか) / ## 対象(何に対して) / ## 事前条件 / ## 事後条件(何が成立するか) / ## 取消・失敗 / ## 順序・タイミング。文書から読み取れない見出しは本文に「要確認」と書き、uncertaintiesにも記載する。`;
 
-export async function extractCandidates(
-  docText: string,
-): Promise<ExtractedCandidate[]> {
+export async function extractCandidates(docText: string): Promise<ExtractedCandidate[]> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY を設定してください");
   const model = process.env.EXTRACT_MODEL ?? "claude-sonnet-4-6";
