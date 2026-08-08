@@ -21,6 +21,7 @@ packages/tsconfig/      共有tsconfig
 ```bash
 docker compose up -d --build     # DB起動(初回はスキーマ自動適用)
 pnpm install
+pnpm build                       # 全パッケージをビルド(import / review / mcp の実行前に必須)
 cp .env.example .env             # キーを記入
 ```
 
