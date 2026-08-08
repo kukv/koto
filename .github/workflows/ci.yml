@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 # lint (Biome) / typecheck / test を並列ジョブで実行する。
 # pull_request は PR のマージ結果に対して走るため main も守られる。
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   lint:
-    name: Lint
+    name: lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,7 +37,7 @@ jobs:
         run: pnpm exec biome ci
 
   typecheck:
-    name: Typecheck
+    name: typecheck
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,7 +57,7 @@ jobs:
         run: pnpm typecheck # tsc --noEmit
 
   test:
-    name: Test
+    name: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
