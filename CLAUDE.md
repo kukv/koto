@@ -13,7 +13,7 @@ pnpm run build                 # 全パッケージを依存順にビルド(実�
 pnpm run typecheck             # build + テストコードの型検査。変更後は必ず通すこと
 pnpm test                      # vitest 実行(要 docker compose up -d。koto_test を作り直して単体+DB統合を検証)
 pnpm run mcp                   # MCP サーバ(stdio)起動
-pnpm run import --context <ctx> <files...>   # 文書 → 知識候補(draft)抽出
+pnpm run import --context <ctx> <files...>   # 文書 → 知識候補(draft)抽出のバッチCLI(オプション経路。主経路はエージェント対話 + koto-import スキル)
 pnpm run review list|show|approve|verify|reject   # レビュー CLI
 ```
 
@@ -25,6 +25,7 @@ pnpm run review list|show|approve|verify|reject   # レビュー CLI
 - `packages/mcp-server/` — MCP ツール8本の定義(@kukv/koto-mcp)
 - `packages/import/` — Claude API による文書からの知識抽出(@kukv/koto-import)
 - `packages/cli/` — レビュー CLI(@kukv/koto-cli)
+- `skills/koto-import/` — エージェント対話での文書インポート手順(主経路。抽出規約はここが正。`.claude/skills/` からシンボリックリンクで参照)
 
 ## 規約
 
@@ -35,4 +36,5 @@ pnpm run review list|show|approve|verify|reject   # レビュー CLI
 - **コト(event)中心**: event の本文は「概要 / アクター / 対象 / 事前条件 / 事後条件 / 取消・失敗 / 順序・タイミング」の定型見出し
 - **イベントソーシングを安易に提案しない**: コト中心の知識化と実装方式としてのイベントソーシングは別物
 - **日本語検索は PGroonga 前提**: Postgres 標準の tsvector は日本語に実用不可。検索関連の変更時は注意
+- **初期構成は課金ゼロ**: 埋め込みは `EMBEDDING_PROVIDER=openai` の明示オプトイン。デフォルトはキーワード検索のみ。API キー必須の機能をデフォルト経路に置かない
 - **サプライチェーン設定**: `pnpm-workspace.yaml` の supply-chain 設定(minimumReleaseAge 等)を勝手に緩めない

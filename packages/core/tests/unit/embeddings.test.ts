@@ -18,6 +18,14 @@ afterEach(() => {
 });
 
 describe("embed", () => {
+  test("EMBEDDING_PROVIDER 未設定ならキーがあっても null(デフォルトは none)", async () => {
+    setEnv("EMBEDDING_PROVIDER", undefined);
+    setEnv("OPENAI_API_KEY", "dummy");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    assert.equal(await embed("テスト"), null);
+    assert.equal(fetchSpy.mock.calls.length, 0);
+  });
+
   test("EMBEDDING_PROVIDER=none なら null を返す", async () => {
     setEnv("EMBEDDING_PROVIDER", "none");
     setEnv("OPENAI_API_KEY", "dummy");

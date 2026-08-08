@@ -1,3 +1,5 @@
+import { isCliAvailable, runClaudeCli } from "./cli.js";
+
 export interface ExtractedCandidate {
   type: "term" | "rule" | "event" | "faq";
   title: string;
@@ -31,6 +33,36 @@ const SYSTEM = `あなたは業務システムのドメイン知識を抽出す�
 - eventのbodyは次の見出し構成で書く: ## 概要 / ## アクター(誰が起こすか) / ## 対象(何に対して) / ## 事前条件 / ## 事後条件(何が成立するか) / ## 取消・失敗 / ## 順序・タイミング。文書から読み取れない見出しは本文に「要確認」と書き、uncertaintiesにも記載する。`;
 
 export async function extractCandidates(docText: string): Promise<ExtractedCandidate[]> {
+  const provider = process.env.EXTRACT_PROVIDER;
+  if (provider === "api") return extractViaApi(docText);
+  if (provider === "cli") return extractViaCli(docText);
+  if (await isCliAvailable()) return extractViaCli(docText);
+  if (process.env.ANTHROPIC_API_KEY) return extractViaApi(docText);
+  throw new Error(
+    "抽出に使える Claude が見つかりません。Claude Code (claude) をインストールしてログインするか、ANTHROPIC_API_KEY を設定してください",
+  );
+}
+
+/** Claude Code CLI(サブスクリプション認証)経由で抽出する */
+async function extractViaCli(docText: string): Promise<ExtractedCandidate[]> {
+  const stdout = await runClaudeCli(
+    `${SYSTEM}\n\n以下の文書から知識候補を抽出してください。\n\n${docText}`,
+    process.env.EXTRACT_MODEL,
+  );
+  let result: { is_error?: boolean; result?: string };
+  try {
+    result = JSON.parse(stdout) as { is_error?: boolean; result?: string };
+  } catch {
+    throw new Error(`claude CLI の応答を解釈できません:\n${stdout.slice(0, 500)}`);
+  }
+  if (result.is_error || typeof result.result !== "string") {
+    throw new Error(`claude CLI が失敗しました: ${result.result ?? stdout.slice(0, 500)}`);
+  }
+  return parseCandidates(result.result);
+}
+
+/** Anthropic API(従量課金)経由で抽出する */
+async function extractViaApi(docText: string): Promise<ExtractedCandidate[]> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY を設定してください");
   const model = process.env.EXTRACT_MODEL ?? "claude-sonnet-4-6";
@@ -64,6 +96,11 @@ export async function extractCandidates(docText: string): Promise<ExtractedCandi
     .filter((c) => c.type === "text")
     .map((c) => c.text ?? "")
     .join("\n");
+  return parseCandidates(raw);
+}
+
+/** モデル応答テキスト(コードフェンス許容)を候補配列としてパースする */
+function parseCandidates(raw: string): ExtractedCandidate[] {
   const clean = raw.replace(/```json|```/g, "").trim();
   try {
     return JSON.parse(clean) as ExtractedCandidate[];
