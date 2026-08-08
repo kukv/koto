@@ -2,16 +2,16 @@ export { pool } from "./db.js";
 export { EMBEDDING_DIM, embed, toVectorLiteral } from "./embeddings.js";
 export {
   type Alias,
-  type KnowledgeType,
-  type ProposeInput,
   addRelation,
   findDuplicates,
   getKnowledge,
+  type KnowledgeType,
   listContexts,
+  type ProposeInput,
   pendingReviews,
   propose,
   proposeUpdate,
   setVerification,
   upsertContext,
 } from "./knowledge.js";
-export { type SearchOptions, hybridSearch } from "./search.js";
+export { hybridSearch, type SearchOptions } from "./search.js";
