@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { afterEach, describe, test, vi } from "vitest";
 import { embed, toVectorLiteral } from "../../src/embeddings.js";
 
 const saved = {
@@ -30,22 +30,22 @@ describe("embed", () => {
     assert.equal(await embed("テスト"), null);
   });
 
-  test("正常系: API の埋め込みを返す", async (t) => {
+  test("正常系: API の埋め込みを返す", async () => {
     setEnv("EMBEDDING_PROVIDER", "openai");
     setEnv("OPENAI_API_KEY", "test-key");
-    t.mock.method(
-      globalThis,
-      "fetch",
+    vi.spyOn(globalThis, "fetch").mockImplementation(
       async () =>
         new Response(JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3] }] }), { status: 200 }),
     );
     assert.deepEqual(await embed("テスト"), [0.1, 0.2, 0.3]);
   });
 
-  test("API エラーなら null を返す", async (t) => {
+  test("API エラーなら null を返す", async () => {
     setEnv("EMBEDDING_PROVIDER", "openai");
     setEnv("OPENAI_API_KEY", "test-key");
-    t.mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response("rate limited", { status: 429 }),
+    );
     assert.equal(await embed("テスト"), null);
   });
 });

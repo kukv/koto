@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { after, test } from "node:test";
+import { afterAll, test } from "vitest";
 import { pool } from "../helpers/db.js";
 
-after(() => pool.end());
+afterAll(() => pool.end());
 
 test("koto_test に必要な拡張とテーブルが揃っている", async () => {
   const ext = await pool.query("select extname from pg_extension");

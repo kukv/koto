@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { after, before, describe, test } from "node:test";
+import { afterAll, beforeAll, describe, test } from "vitest";
 import { hybridSearch } from "../../src/search.js";
 import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 
-before(async () => {
+beforeAll(async () => {
   await truncateAll();
   await seedKnowledge({
     context: "sales",
@@ -31,7 +31,7 @@ before(async () => {
     status: "deprecated",
   });
 });
-after(() => pool.end());
+afterAll(() => pool.end());
 
 describe("hybridSearch(キーワード検索経路)", () => {
   test("既定では approved のみが返る(draft / deprecated は除外)", async () => {

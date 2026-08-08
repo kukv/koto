@@ -10,7 +10,7 @@ Koto — 業務知識基盤。ユビキタス言語(言 = term)と業務イベ�
 docker compose up -d --build   # DB 起動(PGroonga + pgvector、初回スキーマ自動適用)
 pnpm install                   # パッケージ管理は pnpm(npm は使わない)
 pnpm run build                 # 全パッケージを依存順にビルド(実行前に必須)
-pnpm run typecheck             # build の別名(tsc が型検査を兼ねる)。変更後は必ず通すこと
+pnpm run typecheck             # build + テストコードの型検査。変更後は必ず通すこと
 pnpm test                      # vitest 実行(要 docker compose up -d。koto_test を作り直して単体+DB統合を検証)
 pnpm run mcp                   # MCP サーバ(stdio)起動
 pnpm run import --context <ctx> <files...>   # 文書 → 知識候補(draft)抽出

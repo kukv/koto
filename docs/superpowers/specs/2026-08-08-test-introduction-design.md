@@ -56,3 +56,13 @@ tests/
 ## ドキュメント
 
 - `CLAUDE.md` のコマンド一覧に `pnpm test` を 1 行追加する(それ以外は変更しない)
+
+## 追記(2026-08-08: マルチモジュール化との統合による設計変更)
+
+main のマルチモジュール化(`packages/*` 分割・tsx 廃止)と CI 導入を取り込むにあたり、ユーザー判断で以下を変更した:
+
+- **テストランナーは node:test から vitest に移行**。main が CI 用に vitest を導入済みであること、tsx 廃止により `node --import tsx --test` の実行系が成立しなくなったことが理由。アサーションは `node:assert/strict` を維持し書き換えを最小化
+- **テストはパッケージごとに配置**: `packages/core/tests`(embeddings 単体 + knowledge / search / smoke 統合 + ヘルパ)、`packages/import/tests`(extract 単体)
+- setup-db は vitest の **globalSetup** に変換。`DATABASE_URL` / `EMBEDDING_PROVIDER` は `vitest.config.ts` の `test.env` で注入し、ファイル直列実行は `fileParallelism: false` で担保
+- テストコードの型検査は各パッケージの `tsconfig.test.json`(`typecheck:tests`)としてルートの `pnpm run typecheck` に統合
+- CI の test ジョブに DB 起動(`docker compose up -d --build` + pg_isready 待機)を追加

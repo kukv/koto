@@ -16,6 +16,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
     "start": "node dist/run-import.js"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@kukv/koto-tsconfig": "workspace:*",
     "@types/node": "24.13.3",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "^4.1.10"
   }
 }

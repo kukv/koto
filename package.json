@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm run build",
+    "typecheck": "pnpm run build && pnpm -r run typecheck:tests",
     "mcp": "pnpm --filter @kukv/koto-mcp start",
     "import": "pnpm --filter @kukv/koto-import start",
     "review": "pnpm --filter @kukv/koto-cli start",

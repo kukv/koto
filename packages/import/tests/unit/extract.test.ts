@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
-import { chunkDocument, extractCandidates } from "../../src/import/extract.js";
+import { afterEach, describe, test, vi } from "vitest";
+import { chunkDocument, extractCandidates } from "../../src/extract.js";
 
 const savedKey = process.env.ANTHROPIC_API_KEY;
 
@@ -23,32 +23,36 @@ describe("extractCandidates", () => {
     await assert.rejects(extractCandidates("文書"), /ANTHROPIC_API_KEY/);
   });
 
-  test("正常系: JSON 配列をパースして返す", async (t) => {
+  test("正常系: JSON 配列をパースして返す", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
     const json = JSON.stringify([{ type: "term", title: "受注", body: "定義" }]);
-    t.mock.method(globalThis, "fetch", mockAnthropicResponse(json));
+    vi.spyOn(globalThis, "fetch").mockImplementation(mockAnthropicResponse(json));
     const result = await extractCandidates("文書");
     assert.equal(result.length, 1);
     assert.equal(result[0].title, "受注");
   });
 
-  test("コードフェンス付きの応答も除去してパースする", async (t) => {
+  test("コードフェンス付きの応答も除去してパースする", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
     const json = JSON.stringify([{ type: "faq", title: "質問", body: "回答" }]);
-    t.mock.method(globalThis, "fetch", mockAnthropicResponse(`\`\`\`json\n${json}\n\`\`\``));
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      mockAnthropicResponse(`\`\`\`json\n${json}\n\`\`\``),
+    );
     const result = await extractCandidates("文書");
     assert.equal(result[0].type, "faq");
   });
 
-  test("API エラーならエラーを投げる", async (t) => {
+  test("API エラーならエラーを投げる", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
-    t.mock.method(globalThis, "fetch", mockAnthropicResponse("", 400));
+    vi.spyOn(globalThis, "fetch").mockImplementation(mockAnthropicResponse("", 400));
     await assert.rejects(extractCandidates("文書"), /Anthropic API error: 400/);
   });
 
-  test("JSON でない応答はパース失敗エラーを投げる", async (t) => {
+  test("JSON でない応答はパース失敗エラーを投げる", async () => {
     process.env.ANTHROPIC_API_KEY = "test-key";
-    t.mock.method(globalThis, "fetch", mockAnthropicResponse("これはJSONではありません"));
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      mockAnthropicResponse("これはJSONではありません"),
+    );
     await assert.rejects(extractCandidates("文書"), /JSONパースに失敗/);
   });
 });

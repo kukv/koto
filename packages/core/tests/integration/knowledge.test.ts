@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { after, beforeEach, describe, test } from "node:test";
+import { afterAll, beforeEach, describe, test } from "vitest";
 import {
   addRelation,
   findDuplicates,
@@ -14,7 +14,7 @@ import {
 import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 
 beforeEach(truncateAll);
-after(() => pool.end());
+afterAll(() => pool.end());
 
 describe("propose", () => {
   test("draft として登録され needs_review が立つ", async () => {
