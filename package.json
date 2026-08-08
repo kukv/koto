@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "engines": {
-    "node": ">=24"
+    "node": "v26.7.0"
   },
   "scripts": {
     "mcp": "tsx src/mcp-server.ts",
