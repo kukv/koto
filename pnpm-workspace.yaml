@@ -1,3 +1,6 @@
+packages:
+  - packages/*
+
 # --- サプライチェーン強化 (bright-room/repository-fanout の設定に準拠) ---
 # 公開から 7 日 (10080 分) 未満のバージョンは推移的依存も含めインストールしない
 minimumReleaseAge: 10080
@@ -10,6 +13,6 @@ blockExoticSubdeps: true
 # peer 依存の欠落・不整合があれば install を失敗させる
 strictPeerDependencies: true
 
-# tsx が依存する esbuild はネイティブバイナリの取得に postinstall が必要
+# vitest が依存する esbuild はネイティブバイナリの取得に postinstall が必要
 allowBuilds:
   esbuild: true

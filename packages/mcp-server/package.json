@@ -1,0 +1,31 @@
+{
+  "name": "@kukv/koto-mcp",
+  "version": "0.1.0",
+  "description": "koto MCP server (stdio)",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": ["dist"],
+  "bin": {
+    "koto-mcp": "dist/mcp-server.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/mcp-server.js"
+  },
+  "dependencies": {
+    "@kukv/koto-core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@kukv/koto-tsconfig": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

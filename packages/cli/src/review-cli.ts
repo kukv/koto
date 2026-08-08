@@ -1,5 +1,5 @@
-import { pool } from "./db.js";
-import { getKnowledge, pendingReviews, setVerification } from "./knowledge.js";
+#!/usr/bin/env node
+import { getKnowledge, pendingReviews, pool, setVerification } from "@kukv/koto-core";
 
 const [cmd, id, arg3, arg4] = process.argv.slice(2);
 
