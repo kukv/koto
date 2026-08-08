@@ -20,7 +20,7 @@ koto にはテストが存在しない。ロジックの中核は `src/knowledge
 ```
 tests/
   helpers/
-    setup-db.ts      # koto_test を drop→create し、001_schema.sql + migrations を番号順に適用
+    setup-db.ts      # koto_test を drop→create し、001_schema.sql を適用
     db.ts            # テスト用 pool と truncate ヘルパ
   unit/
     embeddings.test.ts     # embed(): provider=none→null / API エラー→null / 正常系(fetch モック)、toVectorLiteral
@@ -36,8 +36,8 @@ tests/
 
 ## DB 統合テストの流れ
 
-1. `setup-db.ts` が既存 db コンテナに接続し、`koto_test` を drop & create → `docker/db/init/001_schema.sql` と `docker/db/migrations/*.sql` を番号順に適用する。DB 未起動時は「`docker compose up -d` を先に実行してください」と明示して失敗する。
-2. 各テストファイルは `before` フックで truncate してから自前のテストデータを挿入する。テスト間の独立性は truncate で担保する。
+1. `setup-db.ts` が既存 db コンテナに接続し、`koto_test` を drop & create → `docker/db/init/001_schema.sql` のみを適用する。migrations は旧スキーマで初期化済みの既存 DB 向けであり(fresh な DB に重ねると fkey・カラムの重複でエラーになる)、`001_schema.sql` が最新の完全スキーマ(compose の初期化と同一)。DB 未起動時は「`docker compose up -d` を先に実行してください」と明示して失敗する。
+2. 各テストファイルは `before` フックで truncate してから自前のテストデータを挿入する。テスト間の独立性は truncate で担保する。テストファイルは `--test-concurrency=1` で直列実行し、共有 DB への干渉を防ぐ。
 3. `EMBEDDING_PROVIDER=none` のため `embed()` は null を返す。埋め込み類似の重複検出・ベクトル検索・RRF 融合の経路は統合テストの対象外とする(embeddings の fetch 部分は単体テストでカバー)。
 4. `status='approved'` が必要なテストデータは SQL で直接挿入する(`propose()` は規約どおり draft しか作らないため)。
 
