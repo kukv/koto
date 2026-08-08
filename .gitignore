@@ -1,5 +1,49 @@
-node_modules/
-dist/
+### JetBrains IDEs ###
+.fleet/
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### VSCode ###
+.vscode/
+
+### OS ###
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+### env ###
 .env*
 !.env.example
+
+### AI agents ###
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.superpowers/
+CLAUDE.local.md
+
+### Logfiles ###
+log/*
+!log/.gitkeep
+
+### Tempfiles ###
+.tmp/
+tmp/*
+!tmp/.gitkeep
+
+### Misc ###
+HELP.md
+
+### node / typescript ###
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+
 backups/
