@@ -10,6 +10,11 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-08-test-introduction-design.md`
 
+## 実行状況(2026-08-08 時点)
+
+- Task 1: 実装済み(commit `d1304ee`)。typecheck / lint は通過。**未完了**: Docker 権限の問題で `pnpm test`(Step 7 の DB 検証)とタスクレビューが未実施。再開時はまず `docker compose up -d && pnpm test` でスモークテストを検証してから Task 1 のレビュー → Task 2 以降へ進むこと
+- Task 2〜6: 未着手
+
 ## Global Constraints
 
 - 新規 npm 依存を追加しない(テストは `node:test` / `node:assert` のみで書く)
