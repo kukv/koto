@@ -8,7 +8,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - db-data:/var/lib/postgresql/data
+      # postgres:18 は /var/lib/postgresql 直下へのマウントが必須(旧 /data 指定は起動拒否)
+      - db-data:/var/lib/postgresql
       - ./docker/db/init:/docker-entrypoint-initdb.d
 
   db-backup:

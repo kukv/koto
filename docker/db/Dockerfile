@@ -12,7 +12,7 @@ RUN apt-get update \
  && rm /tmp/groonga-apt-source.deb \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-      postgresql-18-pgroonga \
+      postgresql-18-pgdg-pgroonga \
       postgresql-18-pgvector \
  && apt-get purge -y --auto-remove wget \
  && rm -rf /var/lib/apt/lists/*
