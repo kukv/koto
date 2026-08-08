@@ -1,7 +1,7 @@
+#!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { pool } from "../db.js";
-import { propose } from "../knowledge.js";
+import { pool, propose } from "@kukv/koto-core";
 import { chunkDocument, extractCandidates } from "./extract.js";
 
 const args = process.argv.slice(2);

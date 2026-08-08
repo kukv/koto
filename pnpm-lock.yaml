@@ -53,6 +53,22 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/import:
+    dependencies:
+      '@kukv/koto-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@kukv/koto-tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: 24.13.3
+        version: 24.13.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/mcp-server:
     dependencies:
       '@kukv/koto-core':
