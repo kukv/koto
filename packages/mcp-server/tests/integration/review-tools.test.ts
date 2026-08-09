@@ -18,6 +18,7 @@ describe("createKotoServer", () => {
       "list_contexts",
       "propose_knowledge",
       "propose_update",
+      "reject_knowledge",
       "search_knowledge",
       "upsert_context",
     ]);
@@ -88,5 +89,53 @@ describe("approve_knowledge", () => {
     });
 
     assert.match(textOf(res), /見つかりません/);
+  });
+});
+
+describe("reject_knowledge", () => {
+  test("accept すると deprecated になり理由が残る", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    const client = await connectWithElicitation(() => ({
+      action: "accept",
+      content: { reviewer: "野中" },
+    }));
+
+    const res = await client.callTool({
+      name: "reject_knowledge",
+      arguments: { id, reason: "営業部の実態と食い違っている" },
+    });
+
+    assert.match(textOf(res), /deprecated/);
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "deprecated");
+    assert.match(row.review_notes, /却下\(野中\): 営業部の実態と食い違っている/);
+  });
+
+  test("decline すると DB は変化しない", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    const client = await connectWithElicitation(() => ({ action: "cancel" }));
+
+    const res = await client.callTool({
+      name: "reject_knowledge",
+      arguments: { id, reason: "理由" },
+    });
+
+    assert.match(textOf(res), /承認しませんでした/);
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
+  });
+
+  test("elicitation 非対応のクライアントからは実行できない", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    const client = await connect();
+
+    const res = await client.callTool({
+      name: "reject_knowledge",
+      arguments: { id, reason: "理由" },
+    });
+
+    assert.match(textOf(res), /確認ダイアログ/);
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
   });
 });

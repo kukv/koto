@@ -7,6 +7,7 @@ import {
   pendingReviews,
   propose,
   proposeUpdate,
+  reject,
   upsertContext,
 } from "@kukv/koto-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -278,6 +279,35 @@ export function createKotoServer(): McpServer {
         const outcome = await requireHumanApproval(server, "この知識を承認しますか?", target);
         if (!outcome.ok) return text(outcome.message);
         return text(await approve(id, outcome.reviewer));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "reject_knowledge",
+    {
+      title: "知識の却下",
+      description:
+        "レビューで却下する。物理削除はせず deprecated にし、却下理由を記録として残す。実行するとユーザーに確認ダイアログが出る。reason には「なぜ誤りなのか」を具体的に書くこと(この理由自体が後から参照される知識になる)。",
+      inputSchema: {
+        id: z.string().uuid(),
+        reason: z.string().describe("却下する理由。記録に残る"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ id, reason }) => {
+      try {
+        const target = await reviewTarget(id);
+        if (!target) return text(`知識レコードが見つかりません: ${id}`);
+        const outcome = await requireHumanApproval(
+          server,
+          `この知識を却下しますか?\n却下理由: ${reason}`,
+          target,
+        );
+        if (!outcome.ok) return text(outcome.message);
+        return text(await reject(id, reason, outcome.reviewer));
       } catch (e) {
         return fail(e);
       }
