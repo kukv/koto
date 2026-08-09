@@ -82,3 +82,25 @@ describe("hybridSearch(キーワード検索経路)", () => {
     assert.ok(hit.excerpt.length <= 400);
   });
 });
+
+describe("search_text 生成列", () => {
+  test("aliases の JSON キー名は全文索引に入らない", async () => {
+    await seedKnowledge({
+      context: "sales",
+      title: "注文書",
+      body: "顧客に提示する書面",
+      aliases: [{ name: "オーダーシート", kind: "synonym" }],
+    });
+    const res = await pool.query(
+      "select count(*)::int as n from knowledge where search_text &@~ 'synonym'",
+    );
+    assert.equal(res.rows[0].n, 0);
+  });
+
+  test("aliases の name は全文索引に入る", async () => {
+    const res = await pool.query(
+      "select count(*)::int as n from knowledge where search_text &@~ 'オーダーシート'",
+    );
+    assert.equal(res.rows[0].n, 1);
+  });
+});

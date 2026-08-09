@@ -3,6 +3,13 @@ create extension if not exists pgroonga;
 create extension if not exists vector;
 create extension if not exists pgcrypto;
 
+-- 別名は name だけを全文検索の対象にする(JSON のキー名を索引に混入させないため)
+create function koto_alias_names(jsonb) returns text
+  language sql immutable strict as $$
+  select coalesce(string_agg(a->>'name', ' '), '')
+    from jsonb_array_elements($1) a
+$$;
+
 -- コンテキストのマスタ: 置き場所は中央、正しさの判定権限は分散 — をデータで表現する
 create table contexts (
   name        text primary key,
@@ -34,15 +41,22 @@ create table knowledge (
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
   embedding     vector(1536),
-  -- 全文検索用の結合カラム(別名込みでヒットさせる)
+  -- 全文検索用の結合カラム(別名の name 込みでヒットさせる)
   search_text   text generated always as (
-    title || ' ' || coalesce(english_name, '') || ' ' || (aliases::text) || ' ' || body
+    title || ' ' || coalesce(english_name, '') || ' ' || koto_alias_names(aliases) || ' ' || body
   ) stored,
   -- 多義語はコンテキスト違いの別レコードとして共存させる
   unique (context, type, title)
 );
 
-create index idx_knowledge_fulltext  on knowledge using pgroonga (search_text);
+-- status / context / type も索引に載せる。載せないとプランナが btree を選び、
+-- 全文一致が Filter に落ちて pgroonga_score() が 0 を返す(順位が失われる)
+create index idx_knowledge_fulltext on knowledge using pgroonga (
+  search_text,
+  status  pgroonga_text_term_search_ops_v2,
+  context pgroonga_text_term_search_ops_v2,
+  type    pgroonga_text_term_search_ops_v2
+);
 create index idx_knowledge_context   on knowledge (context, status);
 create index idx_knowledge_embedding on knowledge using hnsw (embedding vector_cosine_ops);
 
