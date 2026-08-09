@@ -1,0 +1,45 @@
+name: release
+
+# v* タグの push で MCP サーバの単一ファイルバンドルを作り、GitHub Releases に添付する。
+# 利用側はこのアセットを gh release download で取得する(clone と pnpm build が不要になる)。
+# lint / typecheck / test は再実行しない。タグは PR CI を通った main のコミットに打つ前提。
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Release の作成にはリポジトリへの書き込みが必要。
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Bundle
+        run: pnpm --filter @kukv/koto-mcp run bundle
+      # バンドル固有の失敗(require シム漏れ・外部化漏れ)は pnpm test では検出できない。
+      # 壊れたバンドルを配らないための歯止め。DB は不要。
+      - name: Smoke test
+        run: pnpm --filter @kukv/koto-mcp run smoke
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" packages/mcp-server/koto-mcp.mjs --generate-notes
