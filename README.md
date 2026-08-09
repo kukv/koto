@@ -44,7 +44,7 @@ docker compose exec -T db psql -U koto -d koto < docker/db/migrations/003_contex
 
 ### 利用のみ(推奨)
 
-Release からバンドル済みの単一ファイルを取得します。clone も `pnpm build` も不要です(`gh` の認証で private リポジトリからも取得できます)。
+Release からバンドル済みの単一ファイルを取得します。clone も `pnpm build` も不要です(`gh` の認証で private リポジトリからも取得できます)。Node 24 以上が必要です(バンドルは `--target=node24`)。
 
 ```bash
 mkdir -p ~/.local/share/koto
@@ -62,6 +62,8 @@ claude mcp add koto \
 
 - **既存マシンの DB に `DATABASE_URL` を向ける** — このマシンでは clone が不要になります
 - **clone して `docker compose up -d --build`** — そのマシンに DB を立てます。知識はマシンごとに分かれます
+
+`KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
 
 ### 開発時
 
@@ -90,8 +92,6 @@ Claude Desktop (claude_desktop_config.json):
 }
 ```
 
-`KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
-
 ### リリース(メンテナ向け)
 
 `v*` タグを push すると CI がバンドルして Release に添付します。
@@ -100,6 +100,8 @@ Claude Desktop (claude_desktop_config.json):
 git tag v0.1.1
 git push origin v0.1.1
 ```
+
+同名タグの Release が既にあると `gh release create` は失敗します。打ち直す場合は `gh release delete v0.1.1 --yes --cleanup-tag` で Release とタグを削除してからやり直してください。
 
 ツール一覧: `search_knowledge` / `get_knowledge` / `list_contexts` / `upsert_context` / `propose_knowledge` / `propose_update` / `add_relation` / `get_pending_reviews` / `approve_knowledge` / `verify_knowledge` / `reject_knowledge`
 

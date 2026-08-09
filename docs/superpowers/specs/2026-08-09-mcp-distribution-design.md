@@ -27,11 +27,9 @@ koto を他リポジトリでの作業から使うときの障害は3つあっ�
 
 `packages/mcp-server` に esbuild を devDependency として追加する。バージョンは lockfile に既存の **0.28.1** に合わせる。これにより `pnpm-workspace.yaml` の `minimumReleaseAge: 10080` を自動的に満たし、`allowBuilds` の追記も不要になる(vitest 経由で既に登録済み)。
 
-`pnpm run bundle` を追加し、`tsc` の出力 `dist/` を入力にバンドルする。実測で判明した必須事項が3点ある。
+`pnpm run bundle` を追加し、`tsc` の出力 `dist/` を入力にバンドルする。実測で判明した必須事項が2点ある(`pg` のオプショナル依存のうち `--external:` で外す必要があったのは `pg-native` だけで、`cloudflare:sockets` は `platform=node` では空実装に解決されるため外部化は不要だった)。
 
-**1. オプショナル依存の外部化。** `--external:pg-native --external:cloudflare:sockets`。`pg` が持つオプショナル依存で、いずれも本構成では使わない。
-
-**2. `createRequire` シムを banner に入れる。** `pg` は CJS で `require("events")` を呼ぶため、ESM 出力のままでは実行時に `Dynamic require of "events" is not supported` で落ちる。
+**1. `createRequire` シムを banner に入れる。** `pg` は CJS で `require("events")` を呼ぶため、ESM 出力のままでは実行時に `Dynamic require of "events" is not supported` で落ちる。
 
 ```
 --banner:js='#!/usr/bin/env node
@@ -40,7 +38,7 @@ import{createRequire as __cr}from"node:module";const require=__cr(import.meta.ur
 
 `--format=cjs` にすればシムは不要だが、`dist/mcp-server.js` が top-level await を使っているため esbuild が CJS 出力を拒否する。ESM + シムが唯一の経路である。
 
-**3. ラッパーエントリを1ファイル追加する。** `dist/mcp-server.js` の先頭には shebang があり、banner がその前に挿入されると shebang が2行目に来て構文エラーになる。`packages/mcp-server/bundle-entry.mjs` を新規に置き、
+**2. ラッパーエントリを1ファイル追加する。** `dist/mcp-server.js` の先頭には shebang があり、banner がその前に挿入されると shebang が2行目に来て構文エラーになる。`packages/mcp-server/bundle-entry.mjs` を新規に置き、
 
 ```js
 import "./dist/mcp-server.js";
@@ -59,9 +57,9 @@ import "./dist/mcp-server.js";
 - action は既存 `ci.yml` と同じ pinned SHA を使う
 - 手順: `pnpm install --frozen-lockfile` → `pnpm build` → `pnpm run bundle` → スモークテスト → `gh release create <tag> packages/mcp-server/koto-mcp.mjs`
 
-**スモークテストを挟む。** バンドルに `initialize` と `tools/list` を JSON-RPC で流し、ツールが 11 本返ることを確認する。DB は不要。壊れたバンドルを配らないための歯止めであり、バンドル固有の失敗(上記の require シム漏れ等)は通常の `pnpm test` では検出できないため必要になる。
+**スモークテストを挟む。** バンドルに `initialize` と `tools/list` を JSON-RPC で流し、ツール一覧が返ることを確認する。DB は不要。壊れたバンドルを配らないための歯止めであり、バンドル固有の失敗(上記の require シム漏れ等)は通常の `pnpm test` では検出できないため必要になる。
 
-lint / typecheck / test は再実行しない。タグは PR CI を通った main のコミットに打つ前提とする。
+lint / typecheck / test は再実行しない。タグは PR CI を通った main のコミットに打つ前提とする。なお PR CI (`ci.yml`) 側にはバンドルとスモークを回すジョブを別途追加し、依存追加などでバンドルが壊れた場合にリリースを待たず気づけるようにする。
 
 ## 利用側の手順
 
@@ -90,7 +88,7 @@ claude mcp add koto \
 ## 検証
 
 1. `pnpm run bundle` が成功する
-2. 生成した `koto-mcp.mjs` を `node` で起動し、`initialize` と `tools/list` が正常応答しツールが 11 本返る(手元でこの手順は既に実証済み)
+2. 生成した `koto-mcp.mjs` を `node` で起動し、`initialize` と `tools/list` が正常応答しツール一覧が返る(手元でこの手順は既に実証済み)
 3. `pnpm run typecheck` と `pnpm test` が通る(既存を壊していない)
 4. タグを push して Release にアセットが付く
 5. 実機確認: ワンライナーで取得したファイルを MCP 登録し、`search_knowledge` が動く

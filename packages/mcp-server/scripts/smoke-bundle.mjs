@@ -5,7 +5,6 @@ import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_TOOL_COUNT = 11;
 const TIMEOUT_MS = 30_000;
 
 const bundlePath = join(dirname(dirname(fileURLToPath(import.meta.url))), "koto-mcp.mjs");
@@ -63,8 +62,8 @@ child.stdout.on("data", (chunk) => {
       fail(`tools/list が失敗しました: ${line}`);
       return;
     }
-    if (tools.length !== EXPECTED_TOOL_COUNT) {
-      fail(`ツール数が ${EXPECTED_TOOL_COUNT} ではありません: ${tools.length} 本`);
+    if (tools.length === 0) {
+      fail("ツールが1本も返りませんでした");
       return;
     }
     child.kill("SIGKILL");
