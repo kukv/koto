@@ -74,6 +74,17 @@ Claude Desktop (claude_desktop_config.json):
 
 ツール一覧: `search_knowledge` / `get_knowledge` / `list_contexts` / `upsert_context` / `propose_knowledge` / `propose_update` / `add_relation` / `get_pending_reviews`
 
+## スキルの登録(他リポジトリから使う場合)
+
+文書インポートの抽出規約はスキル `skills/koto-import/` にあります。本リポジトリ内で作業するときは `.claude/skills/` のシンボリックリンクで自動的に読み込まれますが、他のリポジトリでの作業から使う場合は、clone した本リポジトリをユーザースキルとしてリンクします:
+
+```bash
+mkdir -p ~/.claude/skills
+ln -s /絶対パス/koto/skills/koto-import ~/.claude/skills/koto-import
+```
+
+スキルの更新は clone 側で `git pull` するだけで反映されます(リンクの張り直しは不要)。
+
 ## 運用の流れ
 
 **導線1: 文書からの初期投入(エージェント対話)**
