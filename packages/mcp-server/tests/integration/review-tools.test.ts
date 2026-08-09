@@ -222,3 +222,65 @@ describe("verify_knowledge", () => {
     assert.equal(row.needs_review, true);
   });
 });
+
+describe("get_pending_reviews", () => {
+  test("context で絞り込める", async () => {
+    await seedDraft({ context: "sales", title: "営業の下書き" });
+    await seedDraft({ context: "legal", title: "法務の下書き" });
+    const client = await connect();
+
+    const res = await client.callTool({
+      name: "get_pending_reviews",
+      arguments: { context: "legal" },
+    });
+
+    const payload = JSON.parse(textOf(res));
+    assert.equal(payload.total, 1);
+    assert.equal(payload.items.length, 1);
+    assert.equal(payload.items[0].context, "legal");
+  });
+
+  test("type で絞り込める", async () => {
+    await seedDraft({ context: "sales", title: "用語", type: "term" });
+    await seedDraft({ context: "sales", title: "出来事", type: "event" });
+    const client = await connect();
+
+    const res = await client.callTool({
+      name: "get_pending_reviews",
+      arguments: { type: "event" },
+    });
+
+    const payload = JSON.parse(textOf(res));
+    assert.equal(payload.total, 1);
+    assert.equal(payload.items[0].type, "event");
+  });
+
+  // 打ち切りに気づけることがこのツールの要点なので、total が items を上回ることを固定する
+  test("limit で打ち切られると total が items の件数を上回る", async () => {
+    for (const n of [1, 2, 3]) {
+      await seedDraft({ context: "sales", title: `下書き${n}` });
+    }
+    const client = await connect();
+
+    const res = await client.callTool({
+      name: "get_pending_reviews",
+      arguments: { limit: 2 },
+    });
+
+    const payload = JSON.parse(textOf(res));
+    assert.equal(payload.items.length, 2);
+    assert.equal(payload.total, 3);
+  });
+
+  test("引数なしなら絞り込まずに返す", async () => {
+    await seedDraft({ context: "sales", title: "営業の下書き" });
+    await seedDraft({ context: "legal", title: "法務の下書き" });
+    const client = await connect();
+
+    const res = await client.callTool({ name: "get_pending_reviews", arguments: {} });
+
+    const payload = JSON.parse(textOf(res));
+    assert.equal(payload.total, 2);
+    assert.equal(payload.items.length, 2);
+  });
+});

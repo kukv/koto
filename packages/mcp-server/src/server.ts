@@ -257,12 +257,20 @@ export function createKotoServer(): McpServer {
     "get_pending_reviews",
     {
       title: "レビュー待ち一覧",
-      description: "承認待ち(draft)・要確認(needs_review)の知識レコード一覧。",
-      inputSchema: {},
+      description:
+        "承認待ち(draft)・要確認(needs_review)の知識レコード一覧。total は絞り込み後の全件数で、items の件数より多い場合は残りが打ち切られている — そのときは「これで全部」と報告せず、context や type で絞るか limit を上げて残りを確認すること。",
+      inputSchema: {
+        context: z.string().optional().describe("コンテキスト(部署・領域)で絞る"),
+        type: z
+          .enum(["term", "rule", "decision", "requirement", "faq", "event"])
+          .optional()
+          .describe("種別で絞る"),
+        limit: z.number().int().positive().optional().describe("返す最大件数(既定100)"),
+      },
     },
-    async () => {
+    async (args) => {
       try {
-        return text(await pendingReviews());
+        return text(await pendingReviews(args));
       } catch (e) {
         return fail(e);
       }

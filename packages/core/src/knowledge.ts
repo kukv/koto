@@ -304,15 +304,34 @@ export async function listContexts() {
   return res.rows;
 }
 
-export async function pendingReviews() {
+export interface PendingReviewsOptions {
+  context?: string;
+  type?: KnowledgeType;
+  /** 返す最大件数(既定 100)。total はこの影響を受けない */
+  limit?: number;
+}
+
+/**
+ * レビュー待ち(draft または要確認)の一覧。
+ * total は絞り込み後・limit 適用前の件数なので、items の件数より多ければ打ち切られている。
+ */
+export async function pendingReviews(options: PendingReviewsOptions = {}) {
   const res = await pool.query(
     `select id, type, context, title, status, verification, needs_review,
             left(coalesce(review_notes, ''), 200) as review_notes,
-            created_by, created_at
+            created_by, created_at,
+            -- window 関数は limit より先に評価されるため、絞り込み後の全件数が入る
+            count(*) over () as total
        from knowledge
-      where status = 'draft' or needs_review
+      where (status = 'draft' or needs_review)
+        and ($1::text is null or context = $1)
+        and ($2::text is null or type = $2)
       order by created_at asc
-      limit 100`,
+      limit $3`,
+    [options.context ?? null, options.type ?? null, options.limit ?? 100],
   );
-  return res.rows;
+  // total は全行に同じ値が付くため、先頭から取り出して各行からは落とす
+  const total = res.rows.length === 0 ? 0 : Number(res.rows[0].total);
+  const items = res.rows.map(({ total: _total, ...row }) => row);
+  return { total, items };
 }

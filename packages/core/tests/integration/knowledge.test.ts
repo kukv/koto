@@ -215,11 +215,66 @@ describe("pendingReviews", () => {
     await pool.query("update knowledge set needs_review = true where id = $1", [flaggedId]);
     await seedKnowledge({ context: "sales", title: "確定済み", status: "approved" });
 
-    const rows = await pendingReviews();
-    const ids = rows.map((r: { id: string }) => r.id);
+    const { total, items } = await pendingReviews();
+    const ids = items.map((r: { id: string }) => r.id);
     assert.ok(ids.includes(draftId));
     assert.ok(ids.includes(flaggedId));
-    assert.equal(rows.length, 2);
+    assert.equal(items.length, 2);
+    assert.equal(total, 2);
+  });
+
+  test("context で絞れる", async () => {
+    await seedKnowledge({ context: "sales", title: "営業の下書き", status: "draft" });
+    await seedKnowledge({ context: "legal", title: "法務の下書き", status: "draft" });
+
+    const { total, items } = await pendingReviews({ context: "legal" });
+    assert.equal(total, 1);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].context, "legal");
+  });
+
+  test("type で絞れる", async () => {
+    await seedKnowledge({ context: "sales", title: "用語", type: "term", status: "draft" });
+    await seedKnowledge({ context: "sales", title: "出来事", type: "event", status: "draft" });
+
+    const { total, items } = await pendingReviews({ type: "event" });
+    assert.equal(total, 1);
+    assert.equal(items[0].type, "event");
+  });
+
+  // total が limit の影響を受けないことが本機能の要点(打ち切りに気づけるようにするため)
+  test("limit は返す件数を絞るが total は絞り込み後の全件を返す", async () => {
+    for (const n of [1, 2, 3]) {
+      await seedKnowledge({ context: "sales", title: `下書き${n}`, status: "draft" });
+    }
+
+    const { total, items } = await pendingReviews({ limit: 2 });
+    assert.equal(items.length, 2);
+    assert.equal(total, 3);
+  });
+
+  test("絞り込みと limit を併用すると total は絞り込み後の件数になる", async () => {
+    for (const n of [1, 2, 3]) {
+      await seedKnowledge({ context: "sales", title: `営業${n}`, status: "draft" });
+    }
+    await seedKnowledge({ context: "legal", title: "法務", status: "draft" });
+
+    const { total, items } = await pendingReviews({ context: "sales", limit: 1 });
+    assert.equal(items.length, 1);
+    assert.equal(total, 3);
+  });
+
+  test("該当がなければ total 0 と空配列を返す", async () => {
+    const { total, items } = await pendingReviews({ context: "存在しないコンテキスト" });
+    assert.equal(total, 0);
+    assert.deepEqual(items, []);
+  });
+
+  test("集計に使う total 列が items に混ざらない", async () => {
+    await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+
+    const { items } = await pendingReviews();
+    assert.ok(!("total" in items[0]));
   });
 });
 
