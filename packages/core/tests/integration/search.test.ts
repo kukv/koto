@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, test } from "vitest";
-import { hybridSearch } from "../../src/search.js";
+import { buildKeywordQuery, hybridSearch } from "../../src/search.js";
 import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 
 beforeAll(async () => {
@@ -121,6 +121,41 @@ describe("順位付け", () => {
   test("前後の空白があっても完全一致と判定される", async () => {
     const titles = (await hybridSearch("  表示名  ", { context: "rank" })).map((r) => r.title);
     assert.equal(titles[0], "表示名");
+  });
+});
+
+/** EXPLAIN の plan JSON を再帰的に辿ってノードを集める */
+function flattenPlan(node: Record<string, unknown>): Record<string, unknown>[] {
+  const children = (node.Plans as Record<string, unknown>[] | undefined) ?? [];
+  return [node, ...children.flatMap(flattenPlan)];
+}
+
+describe("プラン退行の防御", () => {
+  test("既定経路(approved のみ)で全ヒットのスコアが 0 より大きい", async () => {
+    const rows = await hybridSearch("受注");
+    assert.ok(rows.length > 0, "ヒットが 0 件ではテストにならない");
+    for (const r of rows) {
+      assert.ok(
+        Number(r.score) > 0,
+        `${r.title} の score が ${r.score}。PGroonga 索引が使われていない可能性がある`,
+      );
+    }
+  });
+
+  test("既定経路のプランで PGroonga 索引が使われ status が索引条件に入る", async () => {
+    const { sql, params } = buildKeywordQuery("受注");
+    const res = await pool.query(`explain (format json) ${sql}`, params);
+    const nodes = flattenPlan(res.rows[0]["QUERY PLAN"][0].Plan);
+
+    const usesFulltextIndex = nodes.some((n) => n["Index Name"] === "idx_knowledge_fulltext");
+    assert.ok(
+      usesFulltextIndex,
+      `idx_knowledge_fulltext が使われていない: ${JSON.stringify(nodes)}`,
+    );
+
+    const cond = nodes.map((n) => String(n["Index Cond"] ?? "")).join(" ");
+    assert.ok(cond.includes("&@~"), `全文一致が索引条件に入っていない: ${cond}`);
+    assert.ok(cond.includes("status"), `status が索引条件に入っていない: ${cond}`);
   });
 });
 
