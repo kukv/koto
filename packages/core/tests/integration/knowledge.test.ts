@@ -9,6 +9,7 @@ import {
   pendingReviews,
   propose,
   proposeUpdate,
+  reject,
   setVerification,
   upsertContext,
 } from "../../src/knowledge.js";
@@ -245,6 +246,39 @@ describe("approve", () => {
   test("存在しない id はエラーになる", async () => {
     await assert.rejects(
       () => approve("00000000-0000-0000-0000-000000000000", "野中"),
+      /見つかりません/,
+    );
+  });
+});
+
+describe("reject", () => {
+  test("deprecated になり却下理由と確認者が review_notes に残る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+
+    const result = await reject(id, "営業部の実態と食い違っている", "野中");
+
+    assert.deepEqual(result, { id, status: "deprecated" });
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "deprecated");
+    assert.equal(row.needs_review, false);
+    assert.match(row.review_notes, /却下\(野中\): 営業部の実態と食い違っている/);
+  });
+
+  test("既存の review_notes は残したまま追記される", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set review_notes = '要確認: 出典不明' where id = $1", [id]);
+
+    await reject(id, "出典が確認できなかった", "野中");
+
+    const row = (await pool.query("select review_notes from knowledge where id = $1", [id]))
+      .rows[0];
+    assert.match(row.review_notes, /要確認: 出典不明/);
+    assert.match(row.review_notes, /却下\(野中\): 出典が確認できなかった/);
+  });
+
+  test("存在しない id はエラーになる", async () => {
+    await assert.rejects(
+      () => reject("00000000-0000-0000-0000-000000000000", "理由", "野中"),
       /見つかりません/,
     );
   });

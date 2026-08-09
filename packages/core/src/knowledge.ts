@@ -228,6 +228,19 @@ export async function approve(id: string, by: string) {
   return { id, status: "approved" as const };
 }
 
+/** レビューで却下する(物理削除はせず deprecated にし、却下理由を履歴として残す) */
+export async function reject(id: string, reason: string, by: string) {
+  const res = await pool.query(
+    `update knowledge
+        set status = 'deprecated', needs_review = false,
+            review_notes = coalesce(review_notes || E'\n', '') || $2
+      where id = $1`,
+    [id, `却下(${by}): ${reason}`],
+  );
+  if (res.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
+  return { id, status: "deprecated" as const };
+}
+
 /** 検証レベルの引き上げ(internal=社内確認済 / expert=専門家確認済) */
 export async function setVerification(id: string, level: "internal" | "expert", by?: string) {
   await pool.query(

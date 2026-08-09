@@ -12,6 +12,7 @@ export {
   pendingReviews,
   propose,
   proposeUpdate,
+  reject,
   setVerification,
   upsertContext,
 } from "./knowledge.js";
