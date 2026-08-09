@@ -118,6 +118,7 @@ koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼�
 ## 設計メモ
 
 - **1概念 = 1レコード。** チャンク分割はしない。検索はキーワード(PGroonga)+ベクトルのRRF統合。
+- **検索クエリは単語で。** PGroonga は本文をbigramで索引するため、文章をそのまま投げると全bigramのAND条件になり事実上ヒットしない(「世帯に招待で参加する」→0件 / 「世帯 招待」→ヒット)。意味で引きたい場合はベクトル検索(`EMBEDDING_PROVIDER=openai`)を有効にする。
 - **多義語**は `(context, type, title)` 複合ユニークで、コンテキスト違いの別レコードとして共存。
 - **履歴**は更新トリガで `knowledge_revisions` に自動保存。deprecatedは削除せず残す。
 - **概念マップ**は `knowledge_relations` から都度導出する(手書き保守しない)。

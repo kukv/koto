@@ -59,9 +59,9 @@ export function createKotoServer(): McpServer {
     {
       title: "業務知識の検索",
       description:
-        "業務知識DBをハイブリッド検索(キーワード+ベクトル)する。要件定義・設計・実装・命名の前に必ず関連知識を検索すること。既定では承認済み(approved)のみ返す。結果には検証レベル(none/internal/expert)が含まれる。法令・税務など専門家確認が必要な領域でexpert未満の知識に依拠する場合、その成果物に不確かさの注記を引き継ぐこと。",
+        "業務知識DBをハイブリッド検索(キーワード+ベクトル)する。クエリは単語・キーワードを空白区切りで指定すること(複数語はAND条件)。自然文の文章は語に分割されないためヒットしない。要件定義・設計・実装・命名の前に必ず関連知識を検索すること。既定では承認済み(approved)のみ返す。結果には検証レベル(none/internal/expert)が含まれる。法令・税務など専門家確認が必要な領域でexpert未満の知識に依拠する場合、その成果物に不確かさの注記を引き継ぐこと。",
       inputSchema: {
-        query: z.string().describe("検索クエリ(日本語可)"),
+        query: z.string().describe("検索クエリ。単語を空白区切りで(例:「世帯 招待」)。文章は不可"),
         context: z.string().optional().describe("コンテキスト(部署・領域)で絞り込み"),
         type: z.enum(["term", "rule", "decision", "requirement", "faq", "event"]).optional(),
         include_drafts: z.boolean().optional().describe("trueで未承認(draft)も検索対象に含める"),
@@ -70,14 +70,19 @@ export function createKotoServer(): McpServer {
     },
     async (args) => {
       try {
-        return text(
-          await hybridSearch(args.query, {
-            context: args.context,
-            type: args.type,
-            includeDrafts: args.include_drafts,
-            limit: args.limit,
-          }),
-        );
+        const rows = await hybridSearch(args.query, {
+          context: args.context,
+          type: args.type,
+          includeDrafts: args.include_drafts,
+          limit: args.limit,
+        });
+        // 空配列だけ返すとエージェントが「関連知識なし」と誤って報告するため、直し方を添える
+        if (rows.length === 0) {
+          return text(
+            "該当なし。クエリが文章の場合は単語に分けて再検索してください(「世帯に招待で参加する」→「世帯 招待」)。複数語はAND条件なので、広く探すときは語を減らします。",
+          );
+        }
+        return text(rows);
       } catch (e) {
         return fail(e);
       }
