@@ -13,6 +13,8 @@ pnpm run build                 # 全パッケージを依存順にビルド(実�
 pnpm run typecheck             # build + テストコードの型検査。変更後は必ず通すこと
 pnpm test                      # vitest 実行(要 docker compose up -d。koto_test を作り直して単体+DB統合を検証)
 pnpm run mcp                   # MCP サーバ(stdio)起動
+pnpm --filter @kukv/koto-mcp run bundle   # 配布用の単一ファイル koto-mcp.mjs を生成(要 pnpm run build)
+pnpm --filter @kukv/koto-mcp run smoke    # 生成したバンドルの起動確認(ツール11本)
 ```
 
 ## 構成

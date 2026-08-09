@@ -42,19 +42,37 @@ docker compose exec -T db psql -U koto -d koto < docker/db/migrations/003_contex
 
 ## MCPサーバの接続
 
-事前に `pnpm build` を実行してください。
+### 利用のみ(推奨)
 
-Claude Code:
+Release からバンドル済みの単一ファイルを取得します。clone も `pnpm build` も不要です(`gh` の認証で private リポジトリからも取得できます)。
+
+```bash
+mkdir -p ~/.local/share/koto
+gh release download --repo kukv/koto --pattern koto-mcp.mjs --dir ~/.local/share/koto --clobber
+claude mcp add koto \
+  --env DATABASE_URL=postgres://koto:koto@localhost:5432/koto \
+  --env KOTO_REVIEWER=あなたの名前 \
+  -- node ~/.local/share/koto/koto-mcp.mjs
+# 埋め込みを使う場合のみ: --env EMBEDDING_PROVIDER=openai --env OPENAI_API_KEY=sk-...
+```
+
+更新は `gh release download` の行を再実行するだけです(`--clobber` で上書き)。反映は Claude Code の `/mcp reconnect` で足り、再起動は要りません。
+
+**DB は配布に含まれません。** 次のどちらかが必要です:
+
+- **既存マシンの DB に `DATABASE_URL` を向ける** — このマシンでは clone が不要になります
+- **clone して `docker compose up -d --build`** — そのマシンに DB を立てます。知識はマシンごとに分かれます
+
+### 開発時
+
+リポジトリを clone して作業する場合は、ビルド済みの `dist` を直接指します。事前に `pnpm build` を実行してください。
 
 ```bash
 claude mcp add koto \
   --env DATABASE_URL=postgres://koto:koto@localhost:5432/koto \
   --env KOTO_REVIEWER=あなたの名前 \
   -- node /絶対パス/koto/packages/mcp-server/dist/mcp-server.js
-# 埋め込みを使う場合のみ: --env EMBEDDING_PROVIDER=openai --env OPENAI_API_KEY=sk-...
 ```
-
-`KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
 
 Claude Desktop (claude_desktop_config.json):
 
@@ -70,6 +88,17 @@ Claude Desktop (claude_desktop_config.json):
     }
   }
 }
+```
+
+`KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
+
+### リリース(メンテナ向け)
+
+`v*` タグを push すると CI がバンドルして Release に添付します。
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ツール一覧: `search_knowledge` / `get_knowledge` / `list_contexts` / `upsert_context` / `propose_knowledge` / `propose_update` / `add_relation` / `get_pending_reviews` / `approve_knowledge` / `verify_knowledge` / `reject_knowledge`
