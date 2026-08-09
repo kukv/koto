@@ -14,6 +14,17 @@ export interface ReviewTarget {
 export type ApprovalOutcome = { ok: true; reviewer: string } | { ok: false; message: string };
 
 /**
+ * 確認者の候補(環境変数 KOTO_REVIEWER のカンマ区切り)。
+ * 自由入力ではなく候補からの選択にすることで、ダイアログを矢印キーで操作できる。
+ */
+function reviewerCandidates(): string[] {
+  return (process.env.KOTO_REVIEWER ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
  * 人間の確認をクライアント経由で取り、確認者名を受け取る。
  * ダイアログを出せないクライアントでは実行を許可しない(エージェントの自己承認を防ぐため)。
  */
@@ -27,6 +38,15 @@ export async function requireHumanApproval(
       ok: false,
       message:
         "このクライアントは確認ダイアログ(elicitation)に対応していないため実行できません。承認・却下には人間の確認が必要です。",
+    };
+  }
+
+  const candidates = reviewerCandidates();
+  if (candidates.length === 0) {
+    return {
+      ok: false,
+      message:
+        "確認者の候補が設定されていないため実行できません。MCP サーバの環境変数 KOTO_REVIEWER に確認者名を設定してください(カンマ区切りで複数指定できます)。",
     };
   }
 
@@ -44,9 +64,10 @@ export async function requireHumanApproval(
         properties: {
           reviewer: {
             type: "string",
-            title: "確認者名",
-            description: "この判断をした人の名前(記録に残ります)",
-            default: process.env.KOTO_REVIEWER ?? "",
+            title: "確認者",
+            description: "この判断をした人(記録に残ります)",
+            enum: candidates,
+            default: candidates[0],
           },
         },
         required: ["reviewer"],
@@ -62,10 +83,14 @@ export async function requireHumanApproval(
     };
   }
 
+  // SDK も requestedSchema の enum で検証するが、それに依存せずサーバ側でも候補と照合する
   const reviewer =
     typeof result.content?.reviewer === "string" ? result.content.reviewer.trim() : "";
-  if (!reviewer) {
-    return { ok: false, message: "確認者名が入力されなかったため実行しませんでした。" };
+  if (!candidates.includes(reviewer)) {
+    return {
+      ok: false,
+      message: `候補にない確認者が返されたため実行しませんでした: ${reviewer || "(空)"}`,
+    };
   }
   return { ok: true, reviewer };
 }

@@ -55,7 +55,25 @@ describe("approve_knowledge", () => {
     assert.equal(row.needs_review, true);
   });
 
-  test("確認者名が空なら実行しない", async () => {
+  // 候補外は SDK が requestedSchema の enum で弾く(サーバ側の照合はそれに依存しないための二重化)。
+  // どちらが弾いたかに関わらず、DB が変わらないことがここでの契約。
+  test("候補にない確認者が返されたら実行しない", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    const client = await connectWithElicitation(() => ({
+      action: "accept",
+      content: { reviewer: "候補にない人" },
+    }));
+
+    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+
+    assert.match(textOf(res), /候補にない|allowed values/);
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
+  });
+
+  test("確認者名が空で返されたら実行しない", async () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     const client = await connectWithElicitation(() => ({
       action: "accept",
@@ -64,11 +82,28 @@ describe("approve_knowledge", () => {
 
     const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
 
-    assert.match(textOf(res), /確認者名/);
+    assert.match(textOf(res), /候補にない|allowed values/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
     assert.equal(row.verified_by, null);
     assert.equal(row.needs_review, true);
+  });
+
+  test("KOTO_REVIEWER が未設定ならダイアログを出さずに実行を断る", async () => {
+    vi.stubEnv("KOTO_REVIEWER", "");
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let dialogShown = false;
+    const client = await connectWithElicitation(() => {
+      dialogShown = true;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+
+    assert.equal(dialogShown, false);
+    assert.match(textOf(res), /KOTO_REVIEWER/);
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
   });
 
   test("elicitation 非対応のクライアントからは実行できない", async () => {

@@ -54,6 +54,8 @@ claude mcp add koto \
 # 埋め込みを使う場合のみ: --env EMBEDDING_PROVIDER=openai --env OPENAI_API_KEY=sk-...
 ```
 
+`KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
+
 Claude Desktop (claude_desktop_config.json):
 
 ```json
@@ -107,7 +109,7 @@ koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼�
 
 一覧(`get_pending_reviews`)は既定で100件までしか返しません。返り値の `total` が `items` の件数より多いときは残りが打ち切られているので、コンテキストや種別で絞って進めてください(「household の event だけ見せて」)。
 
-承認・却下・検証レベルの設定は MCP ツール(`approve_knowledge` / `reject_knowledge` / `verify_knowledge`)から行いますが、**実行するとサーバが確認ダイアログを出し、ユーザー自身が確認者名を入力するまで DB は変更されません**。エージェントが勝手に承認することはできません。確認者名の既定値は環境変数 `KOTO_REVIEWER` で設定できます。
+承認・却下・検証レベルの設定は MCP ツール(`approve_knowledge` / `reject_knowledge` / `verify_knowledge`)から行いますが、**実行するとサーバが確認ダイアログを出し、ユーザー自身が確認者を選んで承認するまで DB は変更されません**。エージェントが勝手に承認することはできません。確認者の候補は環境変数 `KOTO_REVIEWER` で設定します(未設定だと実行できません)。
 
 この確認ダイアログは MCP の elicitation を使っています。elicitation に対応していないクライアントからは、承認・却下・検証レベルの設定は実行できません。お使いのクライアントが対応しているかは各自ご確認ください。
 
