@@ -214,42 +214,55 @@ export async function upsertContext(
   return res.rows[0];
 }
 
+/** 更新対象が存在しないのか、内容が変わっただけなのかを区別してエラーを投げる */
+async function throwOptimisticLockError(id: string): Promise<never> {
+  const exists = await pool.query(`select 1 from knowledge where id = $1`, [id]);
+  if (exists.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
+  throw new Error(`確認中に内容が変更されたため中止しました。もう一度確認してください: ${id}`);
+}
+
 /** レビューを通して承認する(検索の既定対象になる。検証レベルは internal、既に expert なら維持) */
-export async function approve(id: string, by: string) {
+export async function approve(id: string, by: string, expectedUpdatedAt: string) {
   const res = await pool.query(
     `update knowledge
         set status = 'approved', needs_review = false,
             verification = case when verification = 'expert' then 'expert' else 'internal' end,
             verified_by = $2, verified_at = now()
-      where id = $1`,
-    [id, by],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $3::timestamptz`,
+    [id, by, expectedUpdatedAt],
   );
-  if (res.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
+  if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, status: "approved" as const };
 }
 
 /** レビューで却下する(物理削除はせず deprecated にし、却下理由を履歴として残す) */
-export async function reject(id: string, reason: string, by: string) {
+export async function reject(id: string, reason: string, by: string, expectedUpdatedAt: string) {
   const res = await pool.query(
     `update knowledge
         set status = 'deprecated', needs_review = false,
             review_notes = coalesce(review_notes || E'\n', '') || $2
-      where id = $1`,
-    [id, `却下(${by}): ${reason}`],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $3::timestamptz`,
+    [id, `却下(${by}): ${reason}`, expectedUpdatedAt],
   );
-  if (res.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
+  if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, status: "deprecated" as const };
 }
 
 /** 検証レベルの引き上げ(internal=社内確認済 / expert=専門家確認済) */
-export async function setVerification(id: string, level: "internal" | "expert", by?: string) {
-  await pool.query(
+export async function setVerification(
+  id: string,
+  level: "internal" | "expert",
+  by: string,
+  expectedUpdatedAt: string,
+) {
+  const res = await pool.query(
     `update knowledge
         set verification = $2, verified_by = $3, verified_at = now(),
             needs_review = false
-      where id = $1`,
-    [id, level, by ?? null],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+    [id, level, by, expectedUpdatedAt],
   );
+  if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, verification: level };
 }
 

@@ -6,6 +6,9 @@ export interface ReviewTarget {
   context: string;
   title: string;
   body: string;
+  status: string;
+  review_notes: string | null;
+  updated_at: string;
 }
 
 export type ApprovalOutcome = { ok: true; reviewer: string } | { ok: false; message: string };
@@ -28,21 +31,29 @@ export async function requireHumanApproval(
   }
 
   const excerpt = target.body.length > 300 ? `${target.body.slice(0, 300)}…` : target.body;
-  const result = await server.server.elicitInput({
-    message: `${message}\n\n[${target.type}/${target.context}] ${target.title}\n\n${excerpt}`,
-    requestedSchema: {
-      type: "object",
-      properties: {
-        reviewer: {
-          type: "string",
-          title: "確認者名",
-          description: "この判断をした人の名前(記録に残ります)",
-          default: process.env.KOTO_REVIEWER ?? "",
+  const notesExcerpt = target.review_notes
+    ? target.review_notes.length > 200
+      ? `${target.review_notes.slice(0, 200)}…`
+      : target.review_notes
+    : null;
+  const result = await server.server.elicitInput(
+    {
+      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}`,
+      requestedSchema: {
+        type: "object",
+        properties: {
+          reviewer: {
+            type: "string",
+            title: "確認者名",
+            description: "この判断をした人の名前(記録に残ります)",
+            default: process.env.KOTO_REVIEWER ?? "",
+          },
         },
+        required: ["reviewer"],
       },
-      required: ["reviewer"],
     },
-  });
+    { timeout: 10 * 60 * 1000 },
+  );
 
   if (result.action !== "accept") {
     return {

@@ -12,20 +12,27 @@ export async function truncateAll() {
   );
 }
 
-/** レビュー待ちの draft を1件作る */
+/** レビュー待ちの draft を1件作る(status を指定すれば draft 以外でも作れる) */
 export async function seedDraft(input: {
   context: string;
   title: string;
   type?: string;
   body?: string;
+  status?: string;
 }): Promise<string> {
   await pool.query("insert into contexts (name) values ($1) on conflict (name) do nothing", [
     input.context,
   ]);
   const res = await pool.query(
     `insert into knowledge (type, context, title, body, status, needs_review)
-     values ($1,$2,$3,$4,'draft',true) returning id`,
-    [input.type ?? "term", input.context, input.title, input.body ?? "本文"],
+     values ($1,$2,$3,$4,$5,true) returning id`,
+    [
+      input.type ?? "term",
+      input.context,
+      input.title,
+      input.body ?? "本文",
+      input.status ?? "draft",
+    ],
   );
   return res.rows[0].id as string;
 }

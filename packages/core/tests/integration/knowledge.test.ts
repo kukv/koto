@@ -18,6 +18,12 @@ import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 beforeEach(truncateAll);
 afterAll(() => pool.end());
 
+/** 楽観ロック用に、現時点の updated_at を ISO 文字列で取得する */
+async function currentUpdatedAt(id: string): Promise<string> {
+  const res = await pool.query("select updated_at from knowledge where id = $1", [id]);
+  return (res.rows[0].updated_at as Date).toISOString();
+}
+
 describe("propose", () => {
   test("draft として登録され needs_review が立つ", async () => {
     const { id, duplicates } = await propose({
@@ -176,7 +182,7 @@ describe("setVerification", () => {
   test("検証レベルが設定され needs_review が下りる", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
-    await setVerification(id, "internal", "田中");
+    await setVerification(id, "internal", "田中", await currentUpdatedAt(id));
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "internal");
     assert.equal(row.verified_by, "田中");
@@ -222,7 +228,7 @@ describe("approve", () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
 
-    const result = await approve(id, "野中");
+    const result = await approve(id, "野中", await currentUpdatedAt(id));
 
     assert.deepEqual(result, { id, status: "approved" });
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -237,7 +243,7 @@ describe("approve", () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set verification = 'expert' where id = $1", [id]);
 
-    await approve(id, "野中");
+    await approve(id, "野中", await currentUpdatedAt(id));
 
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "expert");
@@ -245,9 +251,21 @@ describe("approve", () => {
 
   test("存在しない id はエラーになる", async () => {
     await assert.rejects(
-      () => approve("00000000-0000-0000-0000-000000000000", "野中"),
+      () => approve("00000000-0000-0000-0000-000000000000", "野中", new Date().toISOString()),
       /見つかりません/,
     );
+  });
+
+  test("期待した updated_at と食い違うと更新は失敗する", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    const staleUpdatedAt = await currentUpdatedAt(id);
+    // 確認ダイアログが開いている間に別の変更が入った状況を再現する
+    await pool.query("update knowledge set body = '書き換え' where id = $1", [id]);
+
+    await assert.rejects(() => approve(id, "野中", staleUpdatedAt), /変更された/);
+
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
   });
 });
 
@@ -255,7 +273,12 @@ describe("reject", () => {
   test("deprecated になり却下理由と確認者が review_notes に残る", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
 
-    const result = await reject(id, "営業部の実態と食い違っている", "野中");
+    const result = await reject(
+      id,
+      "営業部の実態と食い違っている",
+      "野中",
+      await currentUpdatedAt(id),
+    );
 
     assert.deepEqual(result, { id, status: "deprecated" });
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -268,7 +291,7 @@ describe("reject", () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set review_notes = '要確認: 出典不明' where id = $1", [id]);
 
-    await reject(id, "出典が確認できなかった", "野中");
+    await reject(id, "出典が確認できなかった", "野中", await currentUpdatedAt(id));
 
     const row = (await pool.query("select review_notes from knowledge where id = $1", [id]))
       .rows[0];
@@ -278,7 +301,8 @@ describe("reject", () => {
 
   test("存在しない id はエラーになる", async () => {
     await assert.rejects(
-      () => reject("00000000-0000-0000-0000-000000000000", "理由", "野中"),
+      () =>
+        reject("00000000-0000-0000-0000-000000000000", "理由", "野中", new Date().toISOString()),
       /見つかりません/,
     );
   });

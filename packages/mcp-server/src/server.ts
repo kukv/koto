@@ -35,14 +35,19 @@ const aliasSchema = z.object({
 
 /** 確認ダイアログに出す最小情報を取り出す(見つからなければ null) */
 async function reviewTarget(id: string): Promise<ReviewTarget | null> {
-  const rec = (await getKnowledge(id, false)) as Record<string, unknown> | null;
+  const rec = await getKnowledge(id, false);
   if (!rec) return null;
+  const updatedAt =
+    rec.updated_at instanceof Date ? rec.updated_at.toISOString() : String(rec.updated_at);
   return {
     id,
     type: String(rec.type),
     context: String(rec.context),
     title: String(rec.title),
     body: String(rec.body),
+    status: String(rec.status),
+    review_notes: rec.review_notes == null ? null : String(rec.review_notes),
+    updated_at: updatedAt,
   };
 }
 
@@ -271,15 +276,17 @@ export function createKotoServer(): McpServer {
       description:
         "レビュー待ちの知識を承認し、検索の既定対象にする。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
       inputSchema: { id: z.string().uuid() },
-      annotations: { idempotentHint: true },
     },
     async ({ id }) => {
       try {
         const target = await reviewTarget(id);
         if (!target) return text(`知識レコードが見つかりません: ${id}`);
+        if (target.status === "deprecated") {
+          return text(`却下済み(deprecated)の知識です。対象になりません: ${id}`);
+        }
         const outcome = await requireHumanApproval(server, "この知識を承認しますか?", target);
         if (!outcome.ok) return text(outcome.message);
-        return text(await approve(id, outcome.reviewer));
+        return text(await approve(id, outcome.reviewer, target.updated_at));
       } catch (e) {
         return fail(e);
       }
@@ -302,13 +309,16 @@ export function createKotoServer(): McpServer {
       try {
         const target = await reviewTarget(id);
         if (!target) return text(`知識レコードが見つかりません: ${id}`);
+        if (target.status === "deprecated") {
+          return text(`却下済み(deprecated)の知識です。対象になりません: ${id}`);
+        }
         const outcome = await requireHumanApproval(
           server,
           `この知識を却下しますか?\n却下理由: ${reason}`,
           target,
         );
         if (!outcome.ok) return text(outcome.message);
-        return text(await reject(id, reason, outcome.reviewer));
+        return text(await reject(id, reason, outcome.reviewer, target.updated_at));
       } catch (e) {
         return fail(e);
       }
@@ -325,19 +335,21 @@ export function createKotoServer(): McpServer {
         id: z.string().uuid(),
         level: z.enum(["internal", "expert"]),
       },
-      annotations: { idempotentHint: true },
     },
     async ({ id, level }) => {
       try {
         const target = await reviewTarget(id);
         if (!target) return text(`知識レコードが見つかりません: ${id}`);
+        if (target.status === "deprecated") {
+          return text(`却下済み(deprecated)の知識です。対象になりません: ${id}`);
+        }
         const outcome = await requireHumanApproval(
           server,
           `この知識の検証レベルを ${level} にしますか?`,
           target,
         );
         if (!outcome.ok) return text(outcome.message);
-        return text(await setVerification(id, level, outcome.reviewer));
+        return text(await setVerification(id, level, outcome.reviewer, target.updated_at));
       } catch (e) {
         return fail(e);
       }

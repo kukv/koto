@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterAll, beforeEach, describe, test } from "vitest";
+import { afterAll, beforeEach, describe, test, vi } from "vitest";
 import { connect, connectWithElicitation, textOf } from "../helpers/client.js";
 import { pool, seedDraft, truncateAll } from "../helpers/db.js";
 
@@ -51,6 +51,8 @@ describe("approve_knowledge", () => {
     assert.match(textOf(res), /承認しませんでした/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
   });
 
   test("確認者名が空なら実行しない", async () => {
@@ -63,8 +65,10 @@ describe("approve_knowledge", () => {
     const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
 
     assert.match(textOf(res), /確認者名/);
-    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
   });
 
   test("elicitation 非対応のクライアントからは実行できない", async () => {
@@ -74,8 +78,27 @@ describe("approve_knowledge", () => {
     const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
 
     assert.match(textOf(res), /確認ダイアログ/);
-    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
+  });
+
+  test("deprecated なレコードは対象外として拒否され、elicitation は呼ばれない", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注", status: "deprecated" });
+    const respond = vi.fn(() => ({
+      action: "accept" as const,
+      content: { reviewer: "野中" },
+    }));
+    const client = await connectWithElicitation(respond);
+
+    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+
+    assert.match(textOf(res), /却下済み/);
+    assert.equal(respond.mock.calls.length, 0);
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "deprecated");
+    assert.equal(row.verified_by, null);
   });
 
   test("存在しない id はエラーを返す", async () => {
@@ -112,7 +135,7 @@ describe("reject_knowledge", () => {
     assert.match(row.review_notes, /却下\(野中\): 営業部の実態と食い違っている/);
   });
 
-  test("decline すると DB は変化しない", async () => {
+  test("cancel すると DB は変化しない", async () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     const client = await connectWithElicitation(() => ({ action: "cancel" }));
 
@@ -122,8 +145,10 @@ describe("reject_knowledge", () => {
     });
 
     assert.match(textOf(res), /承認しませんでした/);
-    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
   });
 
   test("elicitation 非対応のクライアントからは実行できない", async () => {
@@ -136,8 +161,10 @@ describe("reject_knowledge", () => {
     });
 
     assert.match(textOf(res), /確認ダイアログ/);
-    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
   });
 });
 
@@ -170,8 +197,9 @@ describe("verify_knowledge", () => {
     });
 
     assert.match(textOf(res), /承認しませんでした/);
-    const row = (await pool.query("select verification from knowledge where id = $1", [id]))
-      .rows[0];
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "none");
+    assert.equal(row.verified_by, null);
+    assert.equal(row.needs_review, true);
   });
 });
