@@ -45,5 +45,6 @@ dist/
 coverage/
 *.tsbuildinfo
 *.log
+packages/mcp-server/koto-mcp.mjs
 
 backups/

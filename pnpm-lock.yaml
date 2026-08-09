@@ -55,6 +55,9 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -1749,7 +1752,6 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.1
       '@esbuild/win32-ia32': 0.28.1
       '@esbuild/win32-x64': 0.28.1
-    optional: true
 
   escape-html@1.0.3: {}
 

@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["packages/*/src/**/*.ts", "packages/*/tests/**/*.ts", "vitest.config.ts"]
+    "includes": [
+      "packages/*/src/**/*.ts",
+      "packages/*/tests/**/*.ts",
+      "packages/*/scripts/**/*.mjs",
+      "vitest.config.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

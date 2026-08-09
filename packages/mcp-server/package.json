@@ -15,6 +15,8 @@
   },
   "scripts": {
     "build": "tsc",
+    "bundle": "esbuild bundle-entry.mjs --bundle --platform=node --target=node24 --format=esm --outfile=koto-mcp.mjs --external:pg-native --external:cloudflare:sockets '--banner:js=import{createRequire as __cr}from\"node:module\";const require=__cr(import.meta.url);'",
+    "smoke": "node scripts/smoke-bundle.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc -p tsconfig.test.json",
     "start": "node dist/mcp-server.js"
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@kukv/koto-tsconfig": "workspace:*",
+    "esbuild": "0.28.1",
     "@types/node": "24.13.3",
     "typescript": "7.0.2",
     "vitest": "^4.1.10"
