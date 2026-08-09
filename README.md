@@ -4,15 +4,13 @@
 
 業務知識(ユビキタス言語・ルール・設計判断)を中央DBに蓄積し、MCP経由でAIエージェントに参照・還流させるための雛形(Phase 1: ローカル実験)。
 
-構成: Postgres + PGroonga(日本語全文検索) + pgvector(埋め込み) / TypeScript製MCPサーバ / 文書インポートパイプライン / レビューCLI
+構成: Postgres + PGroonga(日本語全文検索) + pgvector(埋め込み) / TypeScript製MCPサーバ
 
 ```
 compose.yaml                   DB(PGroonga + pgvector)+ 日次バックアップ
 docker/db/init/001_schema.sql  スキーマ(knowledge / relations / revisions)
 packages/core/          共有ドメイン層(propose・検索)
-packages/mcp-server/    MCPサーバ(8ツール)
-packages/import/        文書 → 知識候補(draft)の抽出パイプライン
-packages/cli/           draft承認用CLI
+packages/mcp-server/    MCPサーバ(11ツール)
 packages/tsconfig/      共有tsconfig
 ```
 
@@ -21,7 +19,7 @@ packages/tsconfig/      共有tsconfig
 ```bash
 docker compose up -d --build     # DB起動(初回はスキーマ自動適用)
 pnpm install
-pnpm build                       # 全パッケージをビルド(import / review / mcp の実行前に必須)
+pnpm build                       # 全パッケージをビルド(mcp の実行前に必須)
 cp .env.example .env             # キーを記入
 ```
 
@@ -34,7 +32,6 @@ docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファ�
 **初期構成は API キーゼロで動きます。** DB(docker)さえ起動していれば、インポート(エージェント対話)・検索・レビューのすべてに課金や API キーは不要です。以下はすべてオプトイン:
 
 - `EMBEDDING_PROVIDER=openai` + `OPENAI_API_KEY` — 埋め込み生成(text-embedding-3-small)を有効化。ベクトル検索と近似重複検出が加わる。未設定(デフォルト)ではキーワード検索(PGroonga)のみで動作
-- `EXTRACT_PROVIDER` / `EXTRACT_MODEL` / `ANTHROPIC_API_KEY` — バッチインポート CLI(後述のオプション経路)用
 
 旧版のスキーマで初期化済みのDBには、マイグレーションを番号順に適用:
 
@@ -52,9 +49,12 @@ Claude Code:
 ```bash
 claude mcp add koto \
   --env DATABASE_URL=postgres://koto:koto@localhost:5432/koto \
+  --env KOTO_REVIEWER=あなたの名前 \
   -- node /絶対パス/koto/packages/mcp-server/dist/mcp-server.js
 # 埋め込みを使う場合のみ: --env EMBEDDING_PROVIDER=openai --env OPENAI_API_KEY=sk-...
 ```
+
+`KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
 
 Claude Desktop (claude_desktop_config.json):
 
@@ -72,7 +72,7 @@ Claude Desktop (claude_desktop_config.json):
 }
 ```
 
-ツール一覧: `search_knowledge` / `get_knowledge` / `list_contexts` / `upsert_context` / `propose_knowledge` / `propose_update` / `add_relation` / `get_pending_reviews`
+ツール一覧: `search_knowledge` / `get_knowledge` / `list_contexts` / `upsert_context` / `propose_knowledge` / `propose_update` / `add_relation` / `get_pending_reviews` / `approve_knowledge` / `verify_knowledge` / `reject_knowledge`
 
 ## スキルの登録(他リポジトリから使う場合)
 
@@ -95,14 +95,6 @@ koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼�
 
 抽出はエージェント自身が行うため、koto 側で LLM API を呼ぶことはありません(課金ゼロ)。抽出の型(コト起点・event の定型見出し・推測の分離など)はリポジトリ同梱のスキル `skills/koto-import/` が与えます(Claude Code へは `.claude/skills/` のシンボリックリンク経由で読み込まれます)。候補はすべて `draft` + `needs_review` で入ります。文書に書いてあったというだけでは承認されません(社内文書は古い・間違っている前提)。読み取れなかった点は `review_notes` に「要確認」として残り、近似重複(同名・別名一致、埋め込み類似)も自動検出されます。
 
-大量ファイルの一括処理や、エージェントを介せない環境(API Only)向けにはバッチ CLI もあります:
-
-```bash
-pnpm run import --context sales docs/仕様書.md wiki/用語集.md
-```
-
-抽出は Claude Code CLI(`claude`、サブスクリプション認証)を優先し、なければ `ANTHROPIC_API_KEY`(従量課金)にフォールバックします。`EXTRACT_PROVIDER`(`cli`/`api`)で強制、`EXTRACT_MODEL` でモデル指定(未設定なら CLI は Claude Code のデフォルト、API は `claude-sonnet-4-6`)。
-
 **導線2: ヒアリング**
 
 文書から作った仮説の辞書を持って部署ヒアリングを実施します。エージェントとの対話で策定する場合(ubiquitous-languageスキルのモードB)は、スキルの最終ステップ「Markdown出力」を `propose_knowledge` 呼び出しに差し替えてください。以降、対話で確定した用語が自動でdraft投入されます。
@@ -111,19 +103,22 @@ pnpm run import --context sales docs/仕様書.md wiki/用語集.md
 
 **レビュー(承認ゲート)**
 
-```bash
-pnpm run review list                             # レビュー待ち一覧
-pnpm run review show <id>                        # 詳細(関連・要確認事項・重複候補)
-pnpm run review approve <id> [確認者名]           # 承認 → 検証レベル internal
-pnpm run review verify <id> expert [確認者名]     # 専門家確認済に引き上げ
-pnpm run review reject <id>                      # deprecated化(物理削除はしない)
-```
+レビューはエージェントとの対話で行います。
 
-承認済み(approved)だけが検索のデフォルト対象です。検証レベルは3段階(none=未検証 / internal=社内確認済 / expert=専門家確認済)で、レコードの内容が更新されると自動でnoneに戻ります(専門家確認は旧版に対するものだから)。
+> レビュー待ちを見せて → (内容を確認・修正) → これを承認して
+
+一覧(`get_pending_reviews`)は既定で100件までしか返しません。返り値の `total` が `items` の件数より多いときは残りが打ち切られているので、コンテキストや種別で絞って進めてください(「household の event だけ見せて」)。
+
+承認・却下・検証レベルの設定は MCP ツール(`approve_knowledge` / `reject_knowledge` / `verify_knowledge`)から行いますが、**実行するとサーバが確認ダイアログを出し、ユーザー自身が確認者を選んで承認するまで DB は変更されません**。エージェントが勝手に承認することはできません。確認者の候補は環境変数 `KOTO_REVIEWER` で設定します(未設定だと実行できません)。
+
+この確認ダイアログは MCP の elicitation を使っています。elicitation に対応していないクライアントからは、承認・却下・検証レベルの設定は実行できません。お使いのクライアントが対応しているかは各自ご確認ください。
+
+承認済み(approved)だけが検索のデフォルト対象です。検証レベルは3段階(none=未検証 / internal=社内確認済 / expert=専門家確認済)で、レコードの内容が更新されると自動でnoneに戻ります(専門家確認は旧版に対するものだから)。却下は物理削除せず deprecated にし、却下理由を記録に残します。
 
 ## 設計メモ
 
 - **1概念 = 1レコード。** チャンク分割はしない。検索はキーワード(PGroonga)+ベクトルのRRF統合。
+- **検索クエリは単語で。** PGroonga は本文をbigramで索引するため、文章をそのまま投げると全bigramのAND条件になり事実上ヒットしない(「世帯に招待で参加する」→0件 / 「世帯 招待」→ヒット)。意味で引きたい場合はベクトル検索(`EMBEDDING_PROVIDER=openai`)を有効にする。
 - **多義語**は `(context, type, title)` 複合ユニークで、コンテキスト違いの別レコードとして共存。
 - **履歴**は更新トリガで `knowledge_revisions` に自動保存。deprecatedは削除せず残す。
 - **概念マップ**は `knowledge_relations` から都度導出する(手書き保守しない)。

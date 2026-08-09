@@ -3,6 +3,7 @@ export { EMBEDDING_DIM, embed, toVectorLiteral } from "./embeddings.js";
 export {
   type Alias,
   addRelation,
+  approve,
   findDuplicates,
   getKnowledge,
   type KnowledgeType,
@@ -11,6 +12,7 @@ export {
   pendingReviews,
   propose,
   proposeUpdate,
+  reject,
   setVerification,
   upsertContext,
 } from "./knowledge.js";

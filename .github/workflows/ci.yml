@@ -73,6 +73,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
       - name: Start database (PGroonga + pgvector)
         run: docker compose up -d --build
       - name: Wait for database

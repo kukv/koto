@@ -15,22 +15,6 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.1))
 
-  packages/cli:
-    dependencies:
-      '@kukv/koto-core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      '@kukv/koto-tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-
   packages/core:
     dependencies:
       pg:
@@ -46,25 +30,6 @@ importers:
       '@types/pg':
         specifier: 8.20.1
         version: 8.20.1
-      typescript:
-        specifier: 7.0.2
-        version: 7.0.2
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.1))
-
-  packages/import:
-    dependencies:
-      '@kukv/koto-core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      '@kukv/koto-tsconfig':
-        specifier: workspace:*
-        version: link:../tsconfig
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -93,6 +58,9 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@24.13.3)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(tsx@4.23.1))
 
   packages/tsconfig: {}
 

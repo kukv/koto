@@ -1,8 +1,0 @@
-{
-  "extends": "@kukv/koto-tsconfig/base.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
-  },
-  "include": ["src"]
-}

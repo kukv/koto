@@ -214,15 +214,78 @@ export async function upsertContext(
   return res.rows[0];
 }
 
-/** 検証レベルの引き上げ(internal=社内確認済 / expert=専門家確認済) */
-export async function setVerification(id: string, level: "internal" | "expert", by?: string) {
-  await pool.query(
+/** 更新対象が存在しないのか、内容が変わっただけなのかを区別してエラーを投げる */
+async function throwOptimisticLockError(id: string): Promise<never> {
+  const exists = await pool.query(`select 1 from knowledge where id = $1`, [id]);
+  if (exists.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
+  throw new Error(`確認中に内容が変更されたため中止しました。もう一度確認してください: ${id}`);
+}
+
+/**
+ * レビューを通して承認する(検索の既定対象になる。検証レベルは internal、既に expert なら維持)。
+ *
+ * expectedUpdatedAt は楽観ロック用で、getKnowledge が返した updated_at(JS Date)を
+ * toISOString() した文字列であることが前提(ms 精度)。to_char 等で作った独自形式の
+ * 文字列を渡すと、内容が変わっていなくても一致せず「内容が変更された」扱いになる。
+ *
+ * deprecated なレコードの承認可否はここでは判定しない(呼び出し側の MCP 層で弾くこと)。
+ */
+export async function approve(id: string, by: string, expectedUpdatedAt: string) {
+  const res = await pool.query(
+    `update knowledge
+        set status = 'approved', needs_review = false,
+            verification = case when verification = 'expert' then 'expert' else 'internal' end,
+            verified_by = $2, verified_at = now()
+      -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
+      where id = $1 and date_trunc('milliseconds', updated_at) = $3::timestamptz`,
+    [id, by, expectedUpdatedAt],
+  );
+  if (res.rowCount === 0) await throwOptimisticLockError(id);
+  return { id, status: "approved" as const };
+}
+
+/**
+ * レビューで却下する(物理削除はせず deprecated にし、却下理由を履歴として残す)。
+ *
+ * expectedUpdatedAt は楽観ロック用で、getKnowledge が返した updated_at(JS Date)を
+ * toISOString() した文字列であることが前提(ms 精度)。異なる形式の文字列を渡すと、
+ * 内容が変わっていなくても一致せず「内容が変更された」扱いになる。
+ */
+export async function reject(id: string, reason: string, by: string, expectedUpdatedAt: string) {
+  const res = await pool.query(
+    `update knowledge
+        set status = 'deprecated', needs_review = false,
+            review_notes = coalesce(review_notes || E'\n', '') || $2
+      -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
+      where id = $1 and date_trunc('milliseconds', updated_at) = $3::timestamptz`,
+    [id, `却下(${by}): ${reason}`, expectedUpdatedAt],
+  );
+  if (res.rowCount === 0) await throwOptimisticLockError(id);
+  return { id, status: "deprecated" as const };
+}
+
+/**
+ * 検証レベルの引き上げ(internal=社内確認済 / expert=専門家確認済)。
+ *
+ * expectedUpdatedAt は楽観ロック用で、getKnowledge が返した updated_at(JS Date)を
+ * toISOString() した文字列であることが前提(ms 精度)。異なる形式の文字列を渡すと、
+ * 内容が変わっていなくても一致せず「内容が変更された」扱いになる。
+ */
+export async function setVerification(
+  id: string,
+  level: "internal" | "expert",
+  by: string,
+  expectedUpdatedAt: string,
+) {
+  const res = await pool.query(
     `update knowledge
         set verification = $2, verified_by = $3, verified_at = now(),
             needs_review = false
-      where id = $1`,
-    [id, level, by ?? null],
+      -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
+      where id = $1 and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+    [id, level, by, expectedUpdatedAt],
   );
+  if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, verification: level };
 }
 
@@ -241,15 +304,34 @@ export async function listContexts() {
   return res.rows;
 }
 
-export async function pendingReviews() {
+export interface PendingReviewsOptions {
+  context?: string;
+  type?: KnowledgeType;
+  /** 返す最大件数(既定 100)。total はこの影響を受けない */
+  limit?: number;
+}
+
+/**
+ * レビュー待ち(draft または要確認)の一覧。
+ * total は絞り込み後・limit 適用前の件数なので、items の件数より多ければ打ち切られている。
+ */
+export async function pendingReviews(options: PendingReviewsOptions = {}) {
   const res = await pool.query(
     `select id, type, context, title, status, verification, needs_review,
             left(coalesce(review_notes, ''), 200) as review_notes,
-            created_by, created_at
+            created_by, created_at,
+            -- window 関数は limit より先に評価されるため、絞り込み後の全件数が入る
+            count(*) over () as total
        from knowledge
-      where status = 'draft' or needs_review
+      where (status = 'draft' or needs_review)
+        and ($1::text is null or context = $1)
+        and ($2::text is null or type = $2)
       order by created_at asc
-      limit 100`,
+      limit $3`,
+    [options.context ?? null, options.type ?? null, options.limit ?? 100],
   );
-  return res.rows;
+  // total は全行に同じ値が付くため、先頭から取り出して各行からは落とす
+  const total = res.rows.length === 0 ? 0 : Number(res.rows[0].total);
+  const items = res.rows.map(({ total: _total, ...row }) => row);
+  return { total, items };
 }

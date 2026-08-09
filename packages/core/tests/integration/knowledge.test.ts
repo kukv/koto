@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { afterAll, beforeEach, describe, test } from "vitest";
 import {
   addRelation,
+  approve,
   findDuplicates,
   getKnowledge,
   listContexts,
   pendingReviews,
   propose,
   proposeUpdate,
+  reject,
   setVerification,
   upsertContext,
 } from "../../src/knowledge.js";
@@ -15,6 +17,12 @@ import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 
 beforeEach(truncateAll);
 afterAll(() => pool.end());
+
+/** 楽観ロック用に、現時点の updated_at を ISO 文字列で取得する */
+async function currentUpdatedAt(id: string): Promise<string> {
+  const res = await pool.query("select updated_at from knowledge where id = $1", [id]);
+  return (res.rows[0].updated_at as Date).toISOString();
+}
 
 describe("propose", () => {
   test("draft として登録され needs_review が立つ", async () => {
@@ -174,7 +182,7 @@ describe("setVerification", () => {
   test("検証レベルが設定され needs_review が下りる", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
-    await setVerification(id, "internal", "田中");
+    await setVerification(id, "internal", "田中", await currentUpdatedAt(id));
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "internal");
     assert.equal(row.verified_by, "田中");
@@ -207,10 +215,150 @@ describe("pendingReviews", () => {
     await pool.query("update knowledge set needs_review = true where id = $1", [flaggedId]);
     await seedKnowledge({ context: "sales", title: "確定済み", status: "approved" });
 
-    const rows = await pendingReviews();
-    const ids = rows.map((r: { id: string }) => r.id);
+    const { total, items } = await pendingReviews();
+    const ids = items.map((r: { id: string }) => r.id);
     assert.ok(ids.includes(draftId));
     assert.ok(ids.includes(flaggedId));
-    assert.equal(rows.length, 2);
+    assert.equal(items.length, 2);
+    assert.equal(total, 2);
+  });
+
+  test("context で絞れる", async () => {
+    await seedKnowledge({ context: "sales", title: "営業の下書き", status: "draft" });
+    await seedKnowledge({ context: "legal", title: "法務の下書き", status: "draft" });
+
+    const { total, items } = await pendingReviews({ context: "legal" });
+    assert.equal(total, 1);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].context, "legal");
+  });
+
+  test("type で絞れる", async () => {
+    await seedKnowledge({ context: "sales", title: "用語", type: "term", status: "draft" });
+    await seedKnowledge({ context: "sales", title: "出来事", type: "event", status: "draft" });
+
+    const { total, items } = await pendingReviews({ type: "event" });
+    assert.equal(total, 1);
+    assert.equal(items[0].type, "event");
+  });
+
+  // total が limit の影響を受けないことが本機能の要点(打ち切りに気づけるようにするため)
+  test("limit は返す件数を絞るが total は絞り込み後の全件を返す", async () => {
+    for (const n of [1, 2, 3]) {
+      await seedKnowledge({ context: "sales", title: `下書き${n}`, status: "draft" });
+    }
+
+    const { total, items } = await pendingReviews({ limit: 2 });
+    assert.equal(items.length, 2);
+    assert.equal(total, 3);
+  });
+
+  test("絞り込みと limit を併用すると total は絞り込み後の件数になる", async () => {
+    for (const n of [1, 2, 3]) {
+      await seedKnowledge({ context: "sales", title: `営業${n}`, status: "draft" });
+    }
+    await seedKnowledge({ context: "legal", title: "法務", status: "draft" });
+
+    const { total, items } = await pendingReviews({ context: "sales", limit: 1 });
+    assert.equal(items.length, 1);
+    assert.equal(total, 3);
+  });
+
+  test("該当がなければ total 0 と空配列を返す", async () => {
+    const { total, items } = await pendingReviews({ context: "存在しないコンテキスト" });
+    assert.equal(total, 0);
+    assert.deepEqual(items, []);
+  });
+
+  test("集計に使う total 列が items に混ざらない", async () => {
+    await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+
+    const { items } = await pendingReviews();
+    assert.ok(!("total" in items[0]));
+  });
+});
+
+describe("approve", () => {
+  test("draft を approved にし verification=internal と確認者を記録する", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set needs_review = true where id = $1", [id]);
+
+    const result = await approve(id, "野中", await currentUpdatedAt(id));
+
+    assert.deepEqual(result, { id, status: "approved" });
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "approved");
+    assert.equal(row.needs_review, false);
+    assert.equal(row.verification, "internal");
+    assert.equal(row.verified_by, "野中");
+    assert.notEqual(row.verified_at, null);
+  });
+
+  test("既に expert のレコードは検証レベルを維持する", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set verification = 'expert' where id = $1", [id]);
+
+    await approve(id, "野中", await currentUpdatedAt(id));
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verification, "expert");
+  });
+
+  test("存在しない id はエラーになる", async () => {
+    await assert.rejects(
+      () => approve("00000000-0000-0000-0000-000000000000", "野中", new Date().toISOString()),
+      /見つかりません/,
+    );
+  });
+
+  test("期待した updated_at と食い違うと更新は失敗する", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    const staleUpdatedAt = await currentUpdatedAt(id);
+    // 確認ダイアログが開いている間に別の変更が入った状況を再現する
+    await pool.query("update knowledge set body = '書き換え' where id = $1", [id]);
+
+    await assert.rejects(() => approve(id, "野中", staleUpdatedAt), /変更された/);
+
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
+  });
+});
+
+describe("reject", () => {
+  test("deprecated になり却下理由と確認者が review_notes に残る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+
+    const result = await reject(
+      id,
+      "営業部の実態と食い違っている",
+      "野中",
+      await currentUpdatedAt(id),
+    );
+
+    assert.deepEqual(result, { id, status: "deprecated" });
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "deprecated");
+    assert.equal(row.needs_review, false);
+    assert.match(row.review_notes, /却下\(野中\): 営業部の実態と食い違っている/);
+  });
+
+  test("既存の review_notes は残したまま追記される", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set review_notes = '要確認: 出典不明' where id = $1", [id]);
+
+    await reject(id, "出典が確認できなかった", "野中", await currentUpdatedAt(id));
+
+    const row = (await pool.query("select review_notes from knowledge where id = $1", [id]))
+      .rows[0];
+    assert.match(row.review_notes, /要確認: 出典不明/);
+    assert.match(row.review_notes, /却下\(野中\): 出典が確認できなかった/);
+  });
+
+  test("存在しない id はエラーになる", async () => {
+    await assert.rejects(
+      () =>
+        reject("00000000-0000-0000-0000-000000000000", "理由", "野中", new Date().toISOString()),
+      /見つかりません/,
+    );
   });
 });
