@@ -83,6 +83,47 @@ describe("hybridSearch(キーワード検索経路)", () => {
   });
 });
 
+describe("順位付け", () => {
+  test("title 完全一致が 1 位、次に別名完全一致、本文だけの一致は下位", async () => {
+    await seedKnowledge({ context: "rank", title: "表示名", body: "居住者が名乗る名前" });
+    await seedKnowledge({ context: "rank", title: "表示名履歴", body: "過去の名前の並び" });
+    await seedKnowledge({
+      context: "rank",
+      title: "呼び名",
+      body: "別の言い方",
+      aliases: [{ name: "表示名", kind: "synonym" }],
+    });
+    await seedKnowledge({
+      context: "rank",
+      title: "居住者",
+      body: "表示名 を持つ人。表示名 は変更できる",
+    });
+
+    const titles = (await hybridSearch("表示名", { context: "rank" })).map((r) => r.title);
+    assert.equal(titles[0], "表示名"); // rank 0
+    assert.equal(titles[1], "呼び名"); // rank 1(別名完全一致)
+    assert.equal(titles[2], "表示名履歴"); // rank 2(title 部分一致)
+    assert.equal(titles[3], "居住者"); // rank 3(本文のみ)
+  });
+
+  test("english_name の完全一致も rank 1 になる", async () => {
+    await seedKnowledge({
+      context: "en",
+      title: "受注伝票",
+      body: "注文の記録",
+      english_name: "sales_order",
+    });
+    await seedKnowledge({ context: "en", title: "説明", body: "sales_order について述べる" });
+    const titles = (await hybridSearch("sales_order", { context: "en" })).map((r) => r.title);
+    assert.equal(titles[0], "受注伝票");
+  });
+
+  test("前後の空白があっても完全一致と判定される", async () => {
+    const titles = (await hybridSearch("  表示名  ", { context: "rank" })).map((r) => r.title);
+    assert.equal(titles[0], "表示名");
+  });
+});
+
 describe("search_text 生成列", () => {
   test("aliases の JSON キー名は全文索引に入らない", async () => {
     await seedKnowledge({
