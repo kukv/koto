@@ -214,6 +214,20 @@ export async function upsertContext(
   return res.rows[0];
 }
 
+/** レビューを通して承認する(検索の既定対象になる。検証レベルは internal、既に expert なら維持) */
+export async function approve(id: string, by: string) {
+  const res = await pool.query(
+    `update knowledge
+        set status = 'approved', needs_review = false,
+            verification = case when verification = 'expert' then 'expert' else 'internal' end,
+            verified_by = $2, verified_at = now()
+      where id = $1`,
+    [id, by],
+  );
+  if (res.rowCount === 0) throw new Error(`知識レコードが見つかりません: ${id}`);
+  return { id, status: "approved" as const };
+}
+
 /** 検証レベルの引き上げ(internal=社内確認済 / expert=専門家確認済) */
 export async function setVerification(id: string, level: "internal" | "expert", by?: string) {
   await pool.query(

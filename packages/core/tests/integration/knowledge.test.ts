@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterAll, beforeEach, describe, test } from "vitest";
 import {
   addRelation,
+  approve,
   findDuplicates,
   getKnowledge,
   listContexts,
@@ -212,5 +213,39 @@ describe("pendingReviews", () => {
     assert.ok(ids.includes(draftId));
     assert.ok(ids.includes(flaggedId));
     assert.equal(rows.length, 2);
+  });
+});
+
+describe("approve", () => {
+  test("draft を approved にし verification=internal と確認者を記録する", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set needs_review = true where id = $1", [id]);
+
+    const result = await approve(id, "野中");
+
+    assert.deepEqual(result, { id, status: "approved" });
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "approved");
+    assert.equal(row.needs_review, false);
+    assert.equal(row.verification, "internal");
+    assert.equal(row.verified_by, "野中");
+    assert.notEqual(row.verified_at, null);
+  });
+
+  test("既に expert のレコードは検証レベルを維持する", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set verification = 'expert' where id = $1", [id]);
+
+    await approve(id, "野中");
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verification, "expert");
+  });
+
+  test("存在しない id はエラーになる", async () => {
+    await assert.rejects(
+      () => approve("00000000-0000-0000-0000-000000000000", "野中"),
+      /見つかりません/,
+    );
   });
 });
