@@ -107,7 +107,7 @@ koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼�
 
 承認・却下・検証レベルの設定は MCP ツール(`approve_knowledge` / `reject_knowledge` / `verify_knowledge`)から行いますが、**実行するとサーバが確認ダイアログを出し、ユーザー自身が確認者名を入力するまで DB は変更されません**。エージェントが勝手に承認することはできません。確認者名の既定値は環境変数 `KOTO_REVIEWER` で設定できます。
 
-この確認ダイアログは MCP の elicitation を使っています。elicitation に対応していないクライアント(Claude Desktop など)からは、承認・却下・検証レベルの設定は実行できません。
+この確認ダイアログは MCP の elicitation を使っています。elicitation に対応していないクライアントからは、承認・却下・検証レベルの設定は実行できません。お使いのクライアントが対応しているかは各自ご確認ください。
 
 承認済み(approved)だけが検索のデフォルト対象です。検証レベルは3段階(none=未検証 / internal=社内確認済 / expert=専門家確認済)で、レコードの内容が更新されると自動でnoneに戻ります(専門家確認は旧版に対するものだから)。却下は物理削除せず deprecated にし、却下理由を記録に残します。
 
