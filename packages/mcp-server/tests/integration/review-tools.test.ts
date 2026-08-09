@@ -101,6 +101,25 @@ describe("approve_knowledge", () => {
     assert.equal(row.verified_by, null);
   });
 
+  test("ダイアログ中に内容が書き換わると承認されない", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    // ダイアログが開いている間(応答が返る前)に、別の操作(propose_update 等)で
+    // 対象レコードが書き換わった状況を再現する。approve_knowledge が「ダイアログを
+    // 出す前に読んだ target.updated_at」を渡している限り、この書き換えにより
+    // 楽観ロックが働いて承認は失敗するはず。
+    const client = await connectWithElicitation(async () => {
+      await pool.query("update knowledge set body = '書き換え' where id = $1", [id]);
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+
+    assert.match(textOf(res), /変更された/);
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
+    assert.equal(row.verified_by, null);
+  });
+
   test("存在しない id はエラーを返す", async () => {
     const client = await connectWithElicitation(() => ({
       action: "accept",

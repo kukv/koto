@@ -12,7 +12,9 @@ export async function connect(): Promise<Client> {
 }
 
 /** elicitation に対応したクライアント。respond がダイアログへの応答を決める */
-export async function connectWithElicitation(respond: () => ElicitResult): Promise<Client> {
+export async function connectWithElicitation(
+  respond: () => ElicitResult | Promise<ElicitResult>,
+): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client(
     { name: "test", version: "0.0.0" },

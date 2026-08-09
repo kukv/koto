@@ -23,15 +23,17 @@ export async function seedDraft(input: {
   await pool.query("insert into contexts (name) values ($1) on conflict (name) do nothing", [
     input.context,
   ]);
+  const status = input.status ?? "draft";
   const res = await pool.query(
     `insert into knowledge (type, context, title, body, status, needs_review)
-     values ($1,$2,$3,$4,$5,true) returning id`,
+     values ($1,$2,$3,$4,$5,$6) returning id`,
     [
       input.type ?? "term",
       input.context,
       input.title,
       input.body ?? "本文",
-      input.status ?? "draft",
+      status,
+      status === "draft",
     ],
   );
   return res.rows[0].id as string;
