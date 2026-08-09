@@ -20,7 +20,7 @@ pnpm run mcp                   # MCP サーバ(stdio)起動
 - `docker/db/init/001_schema.sql` — スキーマ。変更は `docker/db/migrations/` に番号順で追加(既存マイグレーションは変更しない)
 - `packages/tsconfig/` — 共有 tsconfig(@kukv/koto-tsconfig)。各パッケージが extends で参照
 - `packages/core/` — 共有ドメイン層(@kukv/koto-core)。propose / 承認 / 重複検出 / RRF ハイブリッド検索
-- `packages/mcp-server/` — MCP ツール8本の定義(@kukv/koto-mcp)
+- `packages/mcp-server/` — MCP ツール11本の定義(@kukv/koto-mcp)
 - `skills/koto-import/` — エージェント対話での文書インポート手順(主経路。抽出規約はここが正。`.claude/skills/` からシンボリックリンクで参照)
 
 ## 規約

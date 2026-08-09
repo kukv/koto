@@ -4,13 +4,13 @@
 
 業務知識(ユビキタス言語・ルール・設計判断)を中央DBに蓄積し、MCP経由でAIエージェントに参照・還流させるための雛形(Phase 1: ローカル実験)。
 
-構成: Postgres + PGroonga(日本語全文検索) + pgvector(埋め込み) / TypeScript製MCPサーバ / 文書インポートパイプライン / レビューCLI
+構成: Postgres + PGroonga(日本語全文検索) + pgvector(埋め込み) / TypeScript製MCPサーバ
 
 ```
 compose.yaml                   DB(PGroonga + pgvector)+ 日次バックアップ
 docker/db/init/001_schema.sql  スキーマ(knowledge / relations / revisions)
 packages/core/          共有ドメイン層(propose・検索)
-packages/mcp-server/    MCPサーバ(8ツール)
+packages/mcp-server/    MCPサーバ(11ツール)
 packages/tsconfig/      共有tsconfig
 ```
 
@@ -32,7 +32,6 @@ docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファ�
 **初期構成は API キーゼロで動きます。** DB(docker)さえ起動していれば、インポート(エージェント対話)・検索・レビューのすべてに課金や API キーは不要です。以下はすべてオプトイン:
 
 - `EMBEDDING_PROVIDER=openai` + `OPENAI_API_KEY` — 埋め込み生成(text-embedding-3-small)を有効化。ベクトル検索と近似重複検出が加わる。未設定(デフォルト)ではキーワード検索(PGroonga)のみで動作
-- `EXTRACT_PROVIDER` / `EXTRACT_MODEL` / `ANTHROPIC_API_KEY` — バッチインポート CLI(後述のオプション経路)用
 
 旧版のスキーマで初期化済みのDBには、マイグレーションを番号順に適用:
 
