@@ -97,9 +97,11 @@ Claude Desktop (claude_desktop_config.json):
 `v*` タグを push すると CI がバンドルして Release に添付します。
 
 ```bash
-git tag v0.1.1
+git tag -m "リリースの内容" v0.1.1
 git push origin v0.1.1
 ```
+
+タグにメッセージを付けているのは、`tag.gpgSign` を有効にしている環境では軽量タグが作れず `fatal: no tag message?` になるためです。
 
 同名タグの Release が既にあると `gh release create` は失敗します。打ち直す場合は `gh release delete v0.1.1 --yes --cleanup-tag` で Release とタグを削除してからやり直してください。
 
