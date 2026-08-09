@@ -21,6 +21,7 @@ describe("createKotoServer", () => {
       "reject_knowledge",
       "search_knowledge",
       "upsert_context",
+      "verify_knowledge",
     ]);
   });
 });
@@ -137,5 +138,40 @@ describe("reject_knowledge", () => {
     assert.match(textOf(res), /確認ダイアログ/);
     const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
+  });
+});
+
+describe("verify_knowledge", () => {
+  test("accept すると検証レベルが expert に上がる", async () => {
+    const id = await seedDraft({ context: "legal", title: "源泉徴収" });
+    const client = await connectWithElicitation(() => ({
+      action: "accept",
+      content: { reviewer: "山田税理士" },
+    }));
+
+    const res = await client.callTool({
+      name: "verify_knowledge",
+      arguments: { id, level: "expert" },
+    });
+
+    assert.match(textOf(res), /expert/);
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verification, "expert");
+    assert.equal(row.verified_by, "山田税理士");
+  });
+
+  test("decline すると DB は変化しない", async () => {
+    const id = await seedDraft({ context: "legal", title: "源泉徴収" });
+    const client = await connectWithElicitation(() => ({ action: "decline" }));
+
+    const res = await client.callTool({
+      name: "verify_knowledge",
+      arguments: { id, level: "expert" },
+    });
+
+    assert.match(textOf(res), /承認しませんでした/);
+    const row = (await pool.query("select verification from knowledge where id = $1", [id]))
+      .rows[0];
+    assert.equal(row.verification, "none");
   });
 });

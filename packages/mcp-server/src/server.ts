@@ -8,6 +8,7 @@ import {
   propose,
   proposeUpdate,
   reject,
+  setVerification,
   upsertContext,
 } from "@kukv/koto-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -308,6 +309,35 @@ export function createKotoServer(): McpServer {
         );
         if (!outcome.ok) return text(outcome.message);
         return text(await reject(id, reason, outcome.reviewer));
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "verify_knowledge",
+    {
+      title: "検証レベルの設定",
+      description:
+        "知識の検証レベルを設定する。internal=社内で確認済 / expert=外部専門家(税理士・弁護士等)が確認済。承認(status)とは別軸で、内容をどこまで信用してよいかを表す。expert は実際に専門家の確認を得た場合にのみ使うこと。実行するとユーザーに確認ダイアログが出る。",
+      inputSchema: {
+        id: z.string().uuid(),
+        level: z.enum(["internal", "expert"]),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ id, level }) => {
+      try {
+        const target = await reviewTarget(id);
+        if (!target) return text(`知識レコードが見つかりません: ${id}`);
+        const outcome = await requireHumanApproval(
+          server,
+          `この知識の検証レベルを ${level} にしますか?`,
+          target,
+        );
+        if (!outcome.ok) return text(outcome.message);
+        return text(await setVerification(id, level, outcome.reviewer));
       } catch (e) {
         return fail(e);
       }
