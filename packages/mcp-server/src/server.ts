@@ -1,5 +1,6 @@
 import {
   addRelation,
+  approve,
   getKnowledge,
   hybridSearch,
   listContexts,
@@ -10,6 +11,7 @@ import {
 } from "@kukv/koto-core";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { type ReviewTarget, requireHumanApproval } from "./elicit.js";
 
 const text = (v: unknown) => ({
   content: [
@@ -28,6 +30,19 @@ const aliasSchema = z.object({
     .enum(["synonym", "forbidden"])
     .describe("synonym=同義語 / forbidden=使ってはいけない表記"),
 });
+
+/** 確認ダイアログに出す最小情報を取り出す(見つからなければ null) */
+async function reviewTarget(id: string): Promise<ReviewTarget | null> {
+  const rec = (await getKnowledge(id, false)) as Record<string, unknown> | null;
+  if (!rec) return null;
+  return {
+    id,
+    type: String(rec.type),
+    context: String(rec.context),
+    title: String(rec.title),
+    body: String(rec.body),
+  };
+}
 
 export function createKotoServer(): McpServer {
   const server = new McpServer({ name: "koto", version: "0.1.0" });
@@ -241,6 +256,28 @@ export function createKotoServer(): McpServer {
     async () => {
       try {
         return text(await pendingReviews());
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    "approve_knowledge",
+    {
+      title: "知識の承認",
+      description:
+        "レビュー待ちの知識を承認し、検索の既定対象にする。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
+      inputSchema: { id: z.string().uuid() },
+      annotations: { idempotentHint: true },
+    },
+    async ({ id }) => {
+      try {
+        const target = await reviewTarget(id);
+        if (!target) return text(`知識レコードが見つかりません: ${id}`);
+        const outcome = await requireHumanApproval(server, "この知識を承認しますか?", target);
+        if (!outcome.ok) return text(outcome.message);
+        return text(await approve(id, outcome.reviewer));
       } catch (e) {
         return fail(e);
       }
