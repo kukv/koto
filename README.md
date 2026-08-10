@@ -80,7 +80,7 @@ claude mcp add koto \
         "hooks": [
           {
             "type": "command",
-            "command": "DATABASE_URL=postgres://koto:koto@localhost:5432/koto node ~/.koto/koto-mcp.mjs check-naming"
+            "command": "DATABASE_URL=postgres://koto:koto@localhost:5432/koto node ~/.local/share/koto/koto-mcp.mjs check-naming"
           }
         ]
       }
