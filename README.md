@@ -39,6 +39,7 @@ docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファ�
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/002_add_event_type.sql
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/003_contexts_verification.sql
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/004_search_text_alias_names.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/005_verified_note.sql
 ```
 
 ## MCPサーバの接続
