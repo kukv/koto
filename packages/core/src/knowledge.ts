@@ -103,6 +103,32 @@ export async function findDuplicates(
   return [...seen.values()];
 }
 
+/**
+ * 同じ english_name を持つ他のレコード(却下済みを除く)。
+ * review_notes の重複候補は propose 時点のスナップショットなので、承認の瞬間に引き直す。
+ */
+export async function findEnglishNameConflicts(id: string) {
+  const res = await pool.query(
+    `select other.id, other.title, other.context, other.type, other.status
+       from knowledge self
+       join knowledge other
+         on lower(other.english_name) = lower(self.english_name)
+        and other.id <> self.id
+      where self.id = $1
+        and self.english_name is not null
+        and other.status <> 'deprecated'
+      order by other.context, other.title`,
+    [id],
+  );
+  return res.rows as {
+    id: string;
+    title: string;
+    context: string;
+    type: string;
+    status: string;
+  }[];
+}
+
 /** 新しい知識を draft として提案する(承認されるまで検索の既定対象外) */
 export async function propose(input: ProposeInput) {
   const vec = await embed(embeddingSource(input));

@@ -5,6 +5,7 @@ export {
   addRelation,
   approve,
   findDuplicates,
+  findEnglishNameConflicts,
   getKnowledge,
   type KnowledgeType,
   listContexts,

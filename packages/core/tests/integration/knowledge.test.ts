@@ -4,6 +4,7 @@ import {
   addRelation,
   approve,
   findDuplicates,
+  findEnglishNameConflicts,
   getKnowledge,
   listContexts,
   pendingReviews,
@@ -140,6 +141,57 @@ describe("findDuplicates", () => {
     const dups = await findDuplicates("発注", null, null);
 
     assert.equal(dups.length, 0);
+  });
+});
+
+describe("findEnglishNameConflicts", () => {
+  test("同じ english_name の他レコードを返す", async () => {
+    const id = await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      english_name: "resident",
+    });
+    await seedKnowledge({ context: "session", title: "住人", english_name: "resident" });
+
+    const conflicts = await findEnglishNameConflicts(id);
+
+    assert.equal(conflicts.length, 1);
+    assert.equal(conflicts[0].title, "住人");
+    assert.equal(conflicts[0].context, "session");
+  });
+
+  test("大文字小文字は無視して突き合わせる", async () => {
+    const id = await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      english_name: "resident",
+    });
+    await seedKnowledge({ context: "session", title: "住人", english_name: "Resident" });
+
+    assert.equal((await findEnglishNameConflicts(id)).length, 1);
+  });
+
+  test("却下済み(deprecated)は衝突に数えない", async () => {
+    const id = await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      english_name: "resident",
+    });
+    await seedKnowledge({
+      context: "session",
+      title: "住人",
+      english_name: "resident",
+      status: "deprecated",
+    });
+
+    assert.deepEqual(await findEnglishNameConflicts(id), []);
+  });
+
+  test("english_name が無いレコードは衝突なし", async () => {
+    const id = await seedKnowledge({ context: "resident", title: "表示名の制限", type: "rule" });
+    await seedKnowledge({ context: "session", title: "別のルール", type: "rule" });
+
+    assert.deepEqual(await findEnglishNameConflicts(id), []);
   });
 });
 
