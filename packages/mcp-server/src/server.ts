@@ -263,7 +263,7 @@ export function createKotoServer(): McpServer {
     {
       title: "レビュー待ち一覧",
       description:
-        "承認待ち(draft)・要確認(needs_review)の知識レコード一覧。total は絞り込み後の全件数で、items の件数より多い場合は残りが打ち切られている — そのときは「これで全部」と報告せず、context や type で絞るか limit を上げて残りを確認すること。",
+        "承認待ち(draft)・要確認(needs_review)の知識レコード一覧。total は絞り込み後の全件数で、items の件数より多い場合は残りが打ち切られている — そのときは「これで全部」と報告せず、context や type で絞るか limit を上げて残りを確認すること。review_notes は200字で切り詰められ、切れている場合は末尾に「…」が付く。全文は get_knowledge で取れる。",
       inputSchema: {
         context: z.string().optional().describe("コンテキスト(部署・領域)で絞る"),
         type: z
@@ -290,7 +290,10 @@ export function createKotoServer(): McpServer {
         "レビュー待ちの知識を承認し、検索の既定対象にする。承認すると未解決の確認事項(review_notes)はクリアされ、代わりに note が承認根拠として残る。note には何を読んで裏を取ったかを具体的に書くこと(この記録自体が後から参照される知識になる)。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
       inputSchema: {
         id: z.string().uuid(),
-        note: z.string().describe("承認根拠。何を読んで裏を取ったかを具体的に書く。記録に残る"),
+        note: z
+          .string()
+          .min(1)
+          .describe("承認根拠。何を読んで裏を取ったかを具体的に書く。記録に残る"),
       },
     },
     async ({ id, note }) => {
@@ -300,11 +303,10 @@ export function createKotoServer(): McpServer {
         if (target.status === "deprecated") {
           return text(`却下済み(deprecated)の知識です。対象になりません: ${id}`);
         }
-        const outcome = await requireHumanApproval(
-          server,
-          `この知識を承認しますか?\n承認根拠: ${note}`,
-          target,
-        );
+        const outcome = await requireHumanApproval(server, "この知識を承認しますか?", target, {
+          label: "承認根拠",
+          text: note,
+        });
         if (!outcome.ok) return text(outcome.message);
         return text(await approve(id, outcome.reviewer, note, target.updated_at));
       } catch (e) {
@@ -350,11 +352,11 @@ export function createKotoServer(): McpServer {
     {
       title: "検証レベルの設定",
       description:
-        "知識の検証レベルを設定する。internal=社内で確認済 / expert=外部専門家(税理士・弁護士等)が確認済。承認(status)とは別軸で、内容をどこまで信用してよいかを表す。expert は実際に専門家の確認を得た場合にのみ使うこと。note には誰に何を確認したかを具体的に書くこと(記録に残る)。実行するとユーザーに確認ダイアログが出る。",
+        "知識の検証レベルを設定する。internal=社内で確認済 / expert=外部専門家(税理士・弁護士等)が確認済。承認(status)とは別軸で、内容をどこまで信用してよいかを表す。expert は実際に専門家の確認を得た場合にのみ使うこと。note には誰に何を確認したかを具体的に書くこと(記録に残る)。設定すると未解決の確認事項(review_notes)はクリアされ、代わりに note が検証根拠として残る。実行するとユーザーに確認ダイアログが出る。",
       inputSchema: {
         id: z.string().uuid(),
         level: z.enum(["internal", "expert"]),
-        note: z.string().describe("検証根拠。誰に何を確認したかを具体的に書く。記録に残る"),
+        note: z.string().min(1).describe("検証根拠。誰に何を確認したかを具体的に書く。記録に残る"),
       },
     },
     async ({ id, level, note }) => {
@@ -366,8 +368,9 @@ export function createKotoServer(): McpServer {
         }
         const outcome = await requireHumanApproval(
           server,
-          `この知識の検証レベルを ${level} にしますか?\n検証根拠: ${note}`,
+          `この知識の検証レベルを ${level} にしますか?`,
           target,
+          { label: "検証根拠", text: note },
         );
         if (!outcome.ok) return text(outcome.message);
         return text(await setVerification(id, level, outcome.reviewer, note, target.updated_at));

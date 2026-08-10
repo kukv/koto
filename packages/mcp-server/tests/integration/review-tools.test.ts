@@ -43,6 +43,7 @@ describe("approve_knowledge", () => {
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "approved");
     assert.equal(row.verified_by, "野中");
+    assert.equal(row.verified_note, "コードで裏を取った");
   });
 
   test("ユーザーが decline すると DB は変化しない", async () => {
@@ -208,6 +209,27 @@ describe("approve_knowledge", () => {
     });
 
     assert.match(shownMessage, /承認根拠: OrderService\.kt の validate\(\) で裏付けた/);
+    // 承認根拠はレコード情報より後ろに出ること(ID取り違えの最終防波堤であるレコード情報が
+    // 押し出されないことを固定する)
+    assert.ok(shownMessage.indexOf("承認根拠:") > shownMessage.indexOf("[term/sales]"));
+  });
+
+  test("300字を超える承認根拠は切り詰められて…が付く", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+    const longNote = "根".repeat(301);
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: longNote },
+    });
+
+    assert.match(shownMessage, /承認根拠: 根{300}…/);
+    assert.ok(!shownMessage.includes("根".repeat(301)));
   });
 
   test("note を渡さないとツール呼び出しがエラーになる", async () => {
@@ -220,7 +242,8 @@ describe("approve_knowledge", () => {
     // SDK が inputSchema で弾き、isError な CallToolResult としてエラーが返る
     const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
 
-    assert.match(textOf(res), /Invalid arguments/);
+    assert.equal(res.isError, true);
+    assert.match(textOf(res), /note/);
     const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
   });
@@ -295,6 +318,7 @@ describe("verify_knowledge", () => {
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "expert");
     assert.equal(row.verified_by, "山田税理士");
+    assert.equal(row.verified_note, "顧問税理士に確認した");
   });
 
   test("decline すると DB は変化しない", async () => {
@@ -327,6 +351,9 @@ describe("verify_knowledge", () => {
     });
 
     assert.match(shownMessage, /検証根拠: 顧問税理士に口頭で確認した/);
+    // 検証根拠はレコード情報より後ろに出ること(ID取り違えの最終防波堤であるレコード情報が
+    // 押し出されないことを固定する)
+    assert.ok(shownMessage.indexOf("検証根拠:") > shownMessage.indexOf("[term/legal]"));
   });
 });
 
