@@ -196,7 +196,11 @@ describe("approve_knowledge", () => {
 
   // 人間が根拠を見てから判定できることが必須化の目的なので、ダイアログの中身を固定する
   test("確認ダイアログのメッセージに承認根拠が出る", async () => {
-    const id = await seedDraft({ context: "sales", title: "受注" });
+    const id = await seedDraft({
+      context: "sales",
+      title: "受注",
+      review_notes: "重複候補: 受注(別id)",
+    });
     let shownMessage = "";
     const client = await connectWithElicitation((request) => {
       shownMessage = request.params.message;
@@ -209,9 +213,12 @@ describe("approve_knowledge", () => {
     });
 
     assert.match(shownMessage, /承認根拠: OrderService\.kt の validate\(\) で裏付けた/);
-    // 承認根拠はレコード情報より後ろに出ること(ID取り違えの最終防波堤であるレコード情報が
-    // 押し出されないことを固定する)
-    assert.ok(shownMessage.indexOf("承認根拠:") > shownMessage.indexOf("[term/sales]"));
+    // 順序はレコード情報 → 備考 → 承認根拠(ID取り違えの最終防波堤であるレコード情報が
+    // 押し出されず、かつ根拠が備考より後ろに出ることを固定する)
+    assert.ok(
+      shownMessage.indexOf("承認根拠:") > shownMessage.indexOf("備考:") &&
+        shownMessage.indexOf("備考:") > shownMessage.indexOf("[term/sales]"),
+    );
   });
 
   test("300字を超える承認根拠は切り詰められて…が付く", async () => {
@@ -338,7 +345,11 @@ describe("verify_knowledge", () => {
   });
 
   test("確認ダイアログのメッセージに検証根拠が出る", async () => {
-    const id = await seedDraft({ context: "legal", title: "源泉徴収" });
+    const id = await seedDraft({
+      context: "legal",
+      title: "源泉徴収",
+      review_notes: "重複候補: 源泉徴収(別id)",
+    });
     let shownMessage = "";
     const client = await connectWithElicitation((request) => {
       shownMessage = request.params.message;
@@ -351,9 +362,12 @@ describe("verify_knowledge", () => {
     });
 
     assert.match(shownMessage, /検証根拠: 顧問税理士に口頭で確認した/);
-    // 検証根拠はレコード情報より後ろに出ること(ID取り違えの最終防波堤であるレコード情報が
-    // 押し出されないことを固定する)
-    assert.ok(shownMessage.indexOf("検証根拠:") > shownMessage.indexOf("[term/legal]"));
+    // 順序はレコード情報 → 備考 → 検証根拠(ID取り違えの最終防波堤であるレコード情報が
+    // 押し出されず、かつ根拠が備考より後ろに出ることを固定する)
+    assert.ok(
+      shownMessage.indexOf("検証根拠:") > shownMessage.indexOf("備考:") &&
+        shownMessage.indexOf("備考:") > shownMessage.indexOf("[term/legal]"),
+    );
   });
 });
 

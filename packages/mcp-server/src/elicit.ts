@@ -70,7 +70,7 @@ export async function requireHumanApproval(
   const noteExcerpt = note ? truncate(note.text, 300) : null;
   const result = await server.server.elicitInput(
     {
-      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note?.label}: ${noteExcerpt}` : ""}`,
+      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note ? note.label : ""}: ${noteExcerpt}` : ""}`,
       requestedSchema: {
         type: "object",
         properties: {

@@ -39,7 +39,7 @@ create table knowledge (
   verified_note text,
   needs_review  boolean not null default false,
   -- 未解決の確認事項(重複候補など)。承認(approve)・検証(setVerification)でクリアされる。
-  -- 例外: reject だけは却下理由をここに追記する(却下は「未解決」を消す操作ではないため)
+  -- reject(却下理由)と propose_update(更新提案メモ)は追記する(値があっても未解決とは限らない)
   review_notes  text,
   source        jsonb,                               -- {"kind":"document"|"hearing"|"conversation","ref":...}
   created_by    text not null default 'agent',
