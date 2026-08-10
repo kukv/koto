@@ -211,3 +211,19 @@ describe("search_text 生成列", () => {
     assert.equal(res.rows[0].n, 1);
   });
 });
+
+describe("返却列", () => {
+  // 禁止表記を検索結果から伝えるための列。無いと「その語は使うな」を届ける経路が存在しない
+  test("aliases が結果に含まれる", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [{ name: "住人", kind: "forbidden" }],
+      status: "approved",
+    });
+
+    const rows = await hybridSearch("居住者");
+
+    assert.deepEqual(rows[0].aliases, [{ name: "住人", kind: "forbidden" }]);
+  });
+});
