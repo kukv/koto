@@ -34,7 +34,10 @@ describe("approve_knowledge", () => {
       content: { reviewer: "野中" },
     }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /approved/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -46,7 +49,10 @@ describe("approve_knowledge", () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     const client = await connectWithElicitation(() => ({ action: "decline" }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /承認しませんでした/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -64,7 +70,10 @@ describe("approve_knowledge", () => {
       content: { reviewer: "候補にない人" },
     }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /候補にない|allowed values/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -80,7 +89,10 @@ describe("approve_knowledge", () => {
       content: { reviewer: "  " },
     }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /候補にない|allowed values/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -98,7 +110,10 @@ describe("approve_knowledge", () => {
       return { action: "accept", content: { reviewer: "野中" } };
     });
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.equal(dialogShown, false);
     assert.match(textOf(res), /KOTO_REVIEWER/);
@@ -110,7 +125,10 @@ describe("approve_knowledge", () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     const client = await connect();
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /確認ダイアログ/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -127,7 +145,10 @@ describe("approve_knowledge", () => {
     }));
     const client = await connectWithElicitation(respond);
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /却下済み/);
     assert.equal(respond.mock.calls.length, 0);
@@ -147,7 +168,10 @@ describe("approve_knowledge", () => {
       return { action: "accept", content: { reviewer: "野中" } };
     });
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /変更された/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -163,10 +187,42 @@ describe("approve_knowledge", () => {
 
     const res = await client.callTool({
       name: "approve_knowledge",
-      arguments: { id: "00000000-0000-0000-0000-000000000000" },
+      arguments: { id: "00000000-0000-0000-0000-000000000000", note: "コードで裏を取った" },
     });
 
     assert.match(textOf(res), /見つかりません/);
+  });
+
+  // 人間が根拠を見てから判定できることが必須化の目的なので、ダイアログの中身を固定する
+  test("確認ダイアログのメッセージに承認根拠が出る", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "OrderService.kt の validate() で裏付けた" },
+    });
+
+    assert.match(shownMessage, /承認根拠: OrderService\.kt の validate\(\) で裏付けた/);
+  });
+
+  test("note を渡さないとツール呼び出しがエラーになる", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    const client = await connectWithElicitation(() => ({
+      action: "accept",
+      content: { reviewer: "野中" },
+    }));
+
+    // SDK が inputSchema で弾き、isError な CallToolResult としてエラーが返る
+    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+
+    assert.match(textOf(res), /Invalid arguments/);
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
   });
 });
 
@@ -232,7 +288,7 @@ describe("verify_knowledge", () => {
 
     const res = await client.callTool({
       name: "verify_knowledge",
-      arguments: { id, level: "expert" },
+      arguments: { id, level: "expert", note: "顧問税理士に確認した" },
     });
 
     assert.match(textOf(res), /expert/);
@@ -247,7 +303,7 @@ describe("verify_knowledge", () => {
 
     const res = await client.callTool({
       name: "verify_knowledge",
-      arguments: { id, level: "expert" },
+      arguments: { id, level: "expert", note: "顧問税理士に確認した" },
     });
 
     assert.match(textOf(res), /承認しませんでした/);
@@ -255,6 +311,22 @@ describe("verify_knowledge", () => {
     assert.equal(row.verification, "none");
     assert.equal(row.verified_by, null);
     assert.equal(row.needs_review, true);
+  });
+
+  test("確認ダイアログのメッセージに検証根拠が出る", async () => {
+    const id = await seedDraft({ context: "legal", title: "源泉徴収" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "山田税理士" } };
+    });
+
+    await client.callTool({
+      name: "verify_knowledge",
+      arguments: { id, level: "expert", note: "顧問税理士に口頭で確認した" },
+    });
+
+    assert.match(shownMessage, /検証根拠: 顧問税理士に口頭で確認した/);
   });
 });
 

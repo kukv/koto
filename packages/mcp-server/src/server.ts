@@ -287,19 +287,26 @@ export function createKotoServer(): McpServer {
     {
       title: "知識の承認",
       description:
-        "レビュー待ちの知識を承認し、検索の既定対象にする。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
-      inputSchema: { id: z.string().uuid() },
+        "レビュー待ちの知識を承認し、検索の既定対象にする。承認すると未解決の確認事項(review_notes)はクリアされ、代わりに note が承認根拠として残る。note には何を読んで裏を取ったかを具体的に書くこと(この記録自体が後から参照される知識になる)。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
+      inputSchema: {
+        id: z.string().uuid(),
+        note: z.string().describe("承認根拠。何を読んで裏を取ったかを具体的に書く。記録に残る"),
+      },
     },
-    async ({ id }) => {
+    async ({ id, note }) => {
       try {
         const target = await reviewTarget(id);
         if (!target) return text(`知識レコードが見つかりません: ${id}`);
         if (target.status === "deprecated") {
           return text(`却下済み(deprecated)の知識です。対象になりません: ${id}`);
         }
-        const outcome = await requireHumanApproval(server, "この知識を承認しますか?", target);
+        const outcome = await requireHumanApproval(
+          server,
+          `この知識を承認しますか?\n承認根拠: ${note}`,
+          target,
+        );
         if (!outcome.ok) return text(outcome.message);
-        return text(await approve(id, outcome.reviewer, target.updated_at));
+        return text(await approve(id, outcome.reviewer, note, target.updated_at));
       } catch (e) {
         return fail(e);
       }
@@ -343,13 +350,14 @@ export function createKotoServer(): McpServer {
     {
       title: "検証レベルの設定",
       description:
-        "知識の検証レベルを設定する。internal=社内で確認済 / expert=外部専門家(税理士・弁護士等)が確認済。承認(status)とは別軸で、内容をどこまで信用してよいかを表す。expert は実際に専門家の確認を得た場合にのみ使うこと。実行するとユーザーに確認ダイアログが出る。",
+        "知識の検証レベルを設定する。internal=社内で確認済 / expert=外部専門家(税理士・弁護士等)が確認済。承認(status)とは別軸で、内容をどこまで信用してよいかを表す。expert は実際に専門家の確認を得た場合にのみ使うこと。note には誰に何を確認したかを具体的に書くこと(記録に残る)。実行するとユーザーに確認ダイアログが出る。",
       inputSchema: {
         id: z.string().uuid(),
         level: z.enum(["internal", "expert"]),
+        note: z.string().describe("検証根拠。誰に何を確認したかを具体的に書く。記録に残る"),
       },
     },
-    async ({ id, level }) => {
+    async ({ id, level, note }) => {
       try {
         const target = await reviewTarget(id);
         if (!target) return text(`知識レコードが見つかりません: ${id}`);
@@ -358,11 +366,11 @@ export function createKotoServer(): McpServer {
         }
         const outcome = await requireHumanApproval(
           server,
-          `この知識の検証レベルを ${level} にしますか?`,
+          `この知識の検証レベルを ${level} にしますか?\n検証根拠: ${note}`,
           target,
         );
         if (!outcome.ok) return text(outcome.message);
-        return text(await setVerification(id, level, outcome.reviewer, target.updated_at));
+        return text(await setVerification(id, level, outcome.reviewer, note, target.updated_at));
       } catch (e) {
         return fail(e);
       }
