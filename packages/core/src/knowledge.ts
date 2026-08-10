@@ -21,31 +21,50 @@ export interface ProposeInput {
   review_notes?: string;
 }
 
-/** 近似重複の検出: 同名/別名の完全一致 + 埋め込み類似 */
-export async function findDuplicates(title: string, context: string, vec: number[] | null) {
+/**
+ * 近似重複の検出: 同名・別名・english_name の完全一致 + 埋め込み類似。
+ *
+ * context をまたいで見る。同一 context の重複は unique(context, type, title) が防ぐので、
+ * ここが受け持つのは「別の言葉が同じ物」(同義語)の方である。多義語(同じ言葉が context で
+ * 別物)は english_name が分かれるため、横断しても誤検出にはならない。
+ */
+export async function findDuplicates(
+  title: string,
+  englishName: string | null,
+  vec: number[] | null,
+) {
   const seen = new Map<string, Record<string, unknown>>();
 
   const byName = await pool.query(
-    `select id, title, context, type, status from knowledge
-     where context = $2
-       and (lower(title) = lower($1)
-         or exists (
-           select 1 from jsonb_array_elements(aliases) a
-           where lower(a->>'name') = lower($1)))`,
-    [title, context],
+    `select id, title, context, type, status,
+            case
+              when lower(title) = lower($1) then '同名が一致'
+              when exists (select 1 from jsonb_array_elements(aliases) a
+                            where lower(a->>'name') = lower($1)
+                              and a->>'kind' = 'forbidden') then '禁止表記に一致'
+              when exists (select 1 from jsonb_array_elements(aliases) a
+                            where lower(a->>'name') = lower($1)) then '別名が一致'
+              else 'english_name が一致'
+            end as reason
+       from knowledge
+      where lower(title) = lower($1)
+         or exists (select 1 from jsonb_array_elements(aliases) a
+                     where lower(a->>'name') = lower($1))
+         or ($2::text is not null and lower(english_name) = lower($2))`,
+    [title, englishName],
   );
   for (const r of byName.rows) {
-    seen.set(r.id, { ...r, reason: "同名または別名が一致" });
+    seen.set(r.id, r);
   }
 
   if (vec) {
     const bySim = await pool.query(
       `select id, title, context, type, status,
               round((1 - (embedding <=> $1::vector))::numeric, 3) as similarity
-       from knowledge
-       where embedding is not null
-       order by embedding <=> $1::vector
-       limit 3`,
+         from knowledge
+        where embedding is not null
+        order by embedding <=> $1::vector
+        limit 3`,
       [toVectorLiteral(vec)],
     );
     for (const r of bySim.rows) {
@@ -60,7 +79,7 @@ export async function findDuplicates(title: string, context: string, vec: number
 /** 新しい知識を draft として提案する(承認されるまで検索の既定対象外) */
 export async function propose(input: ProposeInput) {
   const vec = await embed(`${input.title} ${input.english_name ?? ""} ${input.body}`);
-  const duplicates = await findDuplicates(input.title, input.context, vec);
+  const duplicates = await findDuplicates(input.title, input.english_name ?? null, vec);
   const notes =
     [
       input.review_notes,
