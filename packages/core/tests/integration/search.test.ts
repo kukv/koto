@@ -122,6 +122,33 @@ describe("順位付け", () => {
     const titles = (await hybridSearch("  表示名  ", { context: "rank" })).map((r) => r.title);
     assert.equal(titles[0], "表示名");
   });
+
+  test("同一の一致種別内では pgroonga_score(本文中の出現回数)で並ぶ", async () => {
+    // どちらも title 部分一致(rank 2)。本文中のクエリ語の出現回数だけが違う
+    await seedKnowledge({
+      context: "score-tie",
+      title: "並び順確認多い方",
+      body: "並び順確認 という語を繰り返す。並び順確認 は重要。並び順確認 が何度も出てくる。並び順確認 の回数を増やす。",
+    });
+    await seedKnowledge({
+      context: "score-tie",
+      title: "並び順確認少ない方",
+      body: "並び順確認 について一度だけ触れる。",
+    });
+    // 行数が少ないとプランナが btree(idx_knowledge_context)を選び pgroonga_score が
+    // 全行 0 に落ちて出現回数が順位に反映されない(search-hybrid.test.ts と同じ問題)。
+    // ノイズ行を足して PGroonga 索引が確実に選ばれるようにする
+    for (let i = 0; i < 5; i++) {
+      await seedKnowledge({
+        context: "score-tie",
+        title: `ノイズ${i}`,
+        body: `検索語とは関係ない内容${i}`,
+      });
+    }
+
+    const titles = (await hybridSearch("並び順確認", { context: "score-tie" })).map((r) => r.title);
+    assert.deepEqual(titles.slice(0, 2), ["並び順確認多い方", "並び順確認少ない方"]);
+  });
 });
 
 /** EXPLAIN の plan JSON を再帰的に辿ってノードを集める */
@@ -130,6 +157,10 @@ function flattenPlan(node: Record<string, unknown>): Record<string, unknown>[] {
   return [node, ...children.flatMap(flattenPlan)];
 }
 
+// この describe 内の EXPLAIN テストが、索引構成の退行(マルチカラム化の巻き戻し等)を
+// 検知できる唯一の実効的なテストである。単一列索引に戻しても score > 0 のテストは
+// PASS してしまう(プランナが PGroonga 索引を BitmapAnd の片側に使うため score が 0 に
+// 落ちない)ことを実測で確認済み。削除・弱体化しないこと
 describe("プラン退行の防御", () => {
   test("既定経路(approved のみ)で全ヒットのスコアが 0 より大きい", async () => {
     const rows = await hybridSearch("受注");

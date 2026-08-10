@@ -36,8 +36,9 @@ docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファ�
 旧版のスキーマで初期化済みのDBには、マイグレーションを番号順に適用:
 
 ```bash
-docker compose exec -T db psql -U koto -d koto < docker/db/migrations/002_add_event_type.sql
-docker compose exec -T db psql -U koto -d koto < docker/db/migrations/003_contexts_verification.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/002_add_event_type.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/003_contexts_verification.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/004_search_text_alias_names.sql
 ```
 
 ## MCPサーバの接続

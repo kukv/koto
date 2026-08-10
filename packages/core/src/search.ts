@@ -106,7 +106,7 @@ export async function hybridSearch(query: string, opts: SearchOptions = {}) {
            round(f.score::numeric, 4) as score
       from fused f
       join knowledge k on k.id = f.id
-     order by ${MATCH_RANK}, f.score desc
+     order by ${MATCH_RANK}, f.score desc, k.updated_at desc
      limit $6`;
   const res = await pool.query(sql, [
     q,

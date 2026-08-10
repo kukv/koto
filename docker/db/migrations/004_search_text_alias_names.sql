@@ -1,6 +1,8 @@
 -- search_text から aliases の JSON キー名を除き、全文索引をマルチカラム化する
 -- (旧スキーマで初期化済みの DB 向け。001_schema.sql と同じ結果になる)
 
+begin;
+
 create or replace function koto_alias_names(jsonb) returns text
   language sql immutable strict as $$
   select coalesce(string_agg(a->>'name', ' '), '')
@@ -26,3 +28,5 @@ create index idx_knowledge_fulltext on knowledge using pgroonga (
 
 create view v_knowledge_approved as
   select * from knowledge where status = 'approved';
+
+commit;
