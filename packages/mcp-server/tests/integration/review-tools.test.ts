@@ -34,19 +34,26 @@ describe("approve_knowledge", () => {
       content: { reviewer: "野中" },
     }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /approved/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "approved");
     assert.equal(row.verified_by, "野中");
+    assert.equal(row.verified_note, "コードで裏を取った");
   });
 
   test("ユーザーが decline すると DB は変化しない", async () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     const client = await connectWithElicitation(() => ({ action: "decline" }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /承認しませんでした/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -64,7 +71,10 @@ describe("approve_knowledge", () => {
       content: { reviewer: "候補にない人" },
     }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /候補にない|allowed values/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -80,7 +90,10 @@ describe("approve_knowledge", () => {
       content: { reviewer: "  " },
     }));
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /候補にない|allowed values/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -98,7 +111,10 @@ describe("approve_knowledge", () => {
       return { action: "accept", content: { reviewer: "野中" } };
     });
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.equal(dialogShown, false);
     assert.match(textOf(res), /KOTO_REVIEWER/);
@@ -110,7 +126,10 @@ describe("approve_knowledge", () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     const client = await connect();
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /確認ダイアログ/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -127,7 +146,10 @@ describe("approve_knowledge", () => {
     }));
     const client = await connectWithElicitation(respond);
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /却下済み/);
     assert.equal(respond.mock.calls.length, 0);
@@ -147,7 +169,10 @@ describe("approve_knowledge", () => {
       return { action: "accept", content: { reviewer: "野中" } };
     });
 
-    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+    const res = await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
 
     assert.match(textOf(res), /変更された/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -163,10 +188,71 @@ describe("approve_knowledge", () => {
 
     const res = await client.callTool({
       name: "approve_knowledge",
-      arguments: { id: "00000000-0000-0000-0000-000000000000" },
+      arguments: { id: "00000000-0000-0000-0000-000000000000", note: "コードで裏を取った" },
     });
 
     assert.match(textOf(res), /見つかりません/);
+  });
+
+  // 人間が根拠を見てから判定できることが必須化の目的なので、ダイアログの中身を固定する
+  test("確認ダイアログのメッセージに承認根拠が出る", async () => {
+    const id = await seedDraft({
+      context: "sales",
+      title: "受注",
+      review_notes: "重複候補: 受注(別id)",
+    });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "OrderService.kt の validate() で裏付けた" },
+    });
+
+    assert.match(shownMessage, /承認根拠: OrderService\.kt の validate\(\) で裏付けた/);
+    // 順序はレコード情報 → 備考 → 承認根拠(ID取り違えの最終防波堤であるレコード情報が
+    // 押し出されず、かつ根拠が備考より後ろに出ることを固定する)
+    assert.ok(
+      shownMessage.indexOf("承認根拠:") > shownMessage.indexOf("備考:") &&
+        shownMessage.indexOf("備考:") > shownMessage.indexOf("[term/sales]"),
+    );
+  });
+
+  test("300字を超える承認根拠は切り詰められて…が付く", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+    const longNote = "根".repeat(301);
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: longNote },
+    });
+
+    assert.match(shownMessage, /承認根拠: 根{300}…/);
+    assert.ok(!shownMessage.includes("根".repeat(301)));
+  });
+
+  test("note を渡さないとツール呼び出しがエラーになる", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    const client = await connectWithElicitation(() => ({
+      action: "accept",
+      content: { reviewer: "野中" },
+    }));
+
+    // SDK が inputSchema で弾き、isError な CallToolResult としてエラーが返る
+    const res = await client.callTool({ name: "approve_knowledge", arguments: { id } });
+
+    assert.equal(res.isError, true);
+    assert.match(textOf(res), /note/);
+    const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.status, "draft");
   });
 });
 
@@ -232,13 +318,14 @@ describe("verify_knowledge", () => {
 
     const res = await client.callTool({
       name: "verify_knowledge",
-      arguments: { id, level: "expert" },
+      arguments: { id, level: "expert", note: "顧問税理士に確認した" },
     });
 
     assert.match(textOf(res), /expert/);
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "expert");
     assert.equal(row.verified_by, "山田税理士");
+    assert.equal(row.verified_note, "顧問税理士に確認した");
   });
 
   test("decline すると DB は変化しない", async () => {
@@ -247,7 +334,7 @@ describe("verify_knowledge", () => {
 
     const res = await client.callTool({
       name: "verify_knowledge",
-      arguments: { id, level: "expert" },
+      arguments: { id, level: "expert", note: "顧問税理士に確認した" },
     });
 
     assert.match(textOf(res), /承認しませんでした/);
@@ -255,6 +342,32 @@ describe("verify_knowledge", () => {
     assert.equal(row.verification, "none");
     assert.equal(row.verified_by, null);
     assert.equal(row.needs_review, true);
+  });
+
+  test("確認ダイアログのメッセージに検証根拠が出る", async () => {
+    const id = await seedDraft({
+      context: "legal",
+      title: "源泉徴収",
+      review_notes: "重複候補: 源泉徴収(別id)",
+    });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "山田税理士" } };
+    });
+
+    await client.callTool({
+      name: "verify_knowledge",
+      arguments: { id, level: "expert", note: "顧問税理士に口頭で確認した" },
+    });
+
+    assert.match(shownMessage, /検証根拠: 顧問税理士に口頭で確認した/);
+    // 順序はレコード情報 → 備考 → 検証根拠(ID取り違えの最終防波堤であるレコード情報が
+    // 押し出されず、かつ根拠が備考より後ろに出ることを固定する)
+    assert.ok(
+      shownMessage.indexOf("検証根拠:") > shownMessage.indexOf("備考:") &&
+        shownMessage.indexOf("備考:") > shownMessage.indexOf("[term/legal]"),
+    );
   });
 });
 

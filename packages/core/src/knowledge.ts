@@ -126,9 +126,10 @@ export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, 
             review_notes = coalesce(review_notes || E'\n', '') || $7,
             embedding = coalesce($8::vector, embedding),
             -- 内容が変わったら検証レベルは未検証に戻す(専門家確認は旧版に対するもの)
-            verification = case when $9::boolean then 'none' else verification end,
-            verified_by  = case when $9::boolean then null else verified_by end,
-            verified_at  = case when $9::boolean then null else verified_at end
+            verification  = case when $9::boolean then 'none' else verification end,
+            verified_by   = case when $9::boolean then null else verified_by end,
+            verified_at   = case when $9::boolean then null else verified_at end,
+            verified_note = case when $9::boolean then null else verified_note end
       where id = $1`,
     [
       id,
@@ -149,7 +150,7 @@ export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, 
 export async function getKnowledge(id: string, expandRelations = true) {
   const rec = await pool.query(
     `select id, type, context, title, english_name, body, aliases, examples,
-            status, verification, verified_by, verified_at,
+            status, verification, verified_by, verified_at, verified_note,
             needs_review, review_notes, source, created_by,
             created_at, updated_at
        from knowledge where id = $1`,
@@ -223,6 +224,9 @@ async function throwOptimisticLockError(id: string): Promise<never> {
 
 /**
  * レビューを通して承認する(検索の既定対象になる。検証レベルは internal、既に expert なら維持)。
+ * 承認は「未解決の確認事項は解決した」という宣言なので review_notes をクリアし、
+ * 代わりに note(何を根拠に承認したか)を verified_note に残す。消えた review_notes は
+ * revisions に残る。
  *
  * expectedUpdatedAt は楽観ロック用で、getKnowledge が返した updated_at(JS Date)を
  * toISOString() した文字列であることが前提(ms 精度)。to_char 等で作った独自形式の
@@ -230,15 +234,15 @@ async function throwOptimisticLockError(id: string): Promise<never> {
  *
  * deprecated なレコードの承認可否はここでは判定しない(呼び出し側の MCP 層で弾くこと)。
  */
-export async function approve(id: string, by: string, expectedUpdatedAt: string) {
+export async function approve(id: string, by: string, note: string, expectedUpdatedAt: string) {
   const res = await pool.query(
     `update knowledge
-        set status = 'approved', needs_review = false,
+        set status = 'approved', needs_review = false, review_notes = null,
             verification = case when verification = 'expert' then 'expert' else 'internal' end,
-            verified_by = $2, verified_at = now()
+            verified_by = $2, verified_at = now(), verified_note = $3
       -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
-      where id = $1 and date_trunc('milliseconds', updated_at) = $3::timestamptz`,
-    [id, by, expectedUpdatedAt],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+    [id, by, note, expectedUpdatedAt],
   );
   if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, status: "approved" as const };
@@ -275,15 +279,16 @@ export async function setVerification(
   id: string,
   level: "internal" | "expert",
   by: string,
+  note: string,
   expectedUpdatedAt: string,
 ) {
   const res = await pool.query(
     `update knowledge
-        set verification = $2, verified_by = $3, verified_at = now(),
-            needs_review = false
+        set verification = $2, verified_by = $3, verified_at = now(), verified_note = $4,
+            needs_review = false, review_notes = null
       -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
-      where id = $1 and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
-    [id, level, by, expectedUpdatedAt],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $5::timestamptz`,
+    [id, level, by, note, expectedUpdatedAt],
   );
   if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, verification: level };
@@ -318,7 +323,9 @@ export interface PendingReviewsOptions {
 export async function pendingReviews(options: PendingReviewsOptions = {}) {
   const res = await pool.query(
     `select id, type, context, title, status, verification, needs_review,
-            left(coalesce(review_notes, ''), 200) as review_notes,
+            -- 途中で切れていることが受け手に伝わるよう、切り詰めたときだけ印を付ける
+            case when length(review_notes) > 200 then left(review_notes, 200) || '…'
+                 else coalesce(review_notes, '') end as review_notes,
             created_by, created_at,
             -- window 関数は limit より先に評価されるため、絞り込み後の全件数が入る
             count(*) over () as total

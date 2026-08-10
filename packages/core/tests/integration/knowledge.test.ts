@@ -135,11 +135,57 @@ describe("proposeUpdate", () => {
     assert.equal(res.rowCount, 1);
     assert.equal(res.rows[0].snapshot.body, "旧本文");
   });
+
+  test("内容の変更で verified_note も verified_by と一緒にリセットされる", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query(
+      `update knowledge
+          set verification = 'expert', verified_by = '専門家',
+              verified_at = now(), verified_note = '旧版に対する根拠'
+        where id = $1`,
+      [id],
+    );
+
+    await proposeUpdate(id, { body: "変更後" });
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verified_note, null);
+    assert.equal(row.verified_by, null);
+    assert.equal(row.verified_at, null);
+  });
+
+  test("内容以外(aliases)の変更では verified_note が維持される", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query(
+      `update knowledge
+          set verification = 'expert', verified_by = '専門家',
+              verified_at = now(), verified_note = '根拠'
+        where id = $1`,
+      [id],
+    );
+
+    await proposeUpdate(id, { aliases: [{ name: "オーダー", kind: "synonym" }] });
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verified_note, "根拠");
+    assert.equal(row.verified_by, "専門家");
+  });
 });
 
 describe("getKnowledge / addRelation", () => {
   test("存在しない id は null", async () => {
     assert.equal(await getKnowledge("00000000-0000-0000-0000-000000000000"), null);
+  });
+
+  test("verified_note が返る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query("update knowledge set verified_note = '就業規則 3 条で確認' where id = $1", [
+      id,
+    ]);
+
+    const rec = (await getKnowledge(id, false)) as { verified_note: string };
+
+    assert.equal(rec.verified_note, "就業規則 3 条で確認");
   });
 
   test("関連が両方向に 1 ホップ展開される", async () => {
@@ -182,12 +228,32 @@ describe("setVerification", () => {
   test("検証レベルが設定され needs_review が下りる", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
-    await setVerification(id, "internal", "田中", await currentUpdatedAt(id));
+    await setVerification(id, "internal", "田中", "税務資料で確認した", await currentUpdatedAt(id));
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "internal");
     assert.equal(row.verified_by, "田中");
     assert.notEqual(row.verified_at, null);
     assert.equal(row.needs_review, false);
+  });
+
+  test("検証根拠が記録され review_notes がクリアされる", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query(
+      "update knowledge set needs_review = true, review_notes = '要確認: 税務の扱い' where id = $1",
+      [id],
+    );
+
+    await setVerification(
+      id,
+      "expert",
+      "山田税理士",
+      "顧問税理士に口頭で確認した",
+      await currentUpdatedAt(id),
+    );
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verified_note, "顧問税理士に口頭で確認した");
+    assert.equal(row.review_notes, null);
   });
 });
 
@@ -276,14 +342,72 @@ describe("pendingReviews", () => {
     const { items } = await pendingReviews();
     assert.ok(!("total" in items[0]));
   });
+
+  test("200 字を超える review_notes は … を付けて切り詰める", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+    await pool.query("update knowledge set review_notes = $2 where id = $1", [
+      id,
+      "あ".repeat(201),
+    ]);
+
+    const { items } = await pendingReviews();
+
+    assert.equal(items[0].review_notes, `${"あ".repeat(200)}…`);
+  });
+
+  // 境界。ちょうど 200 字は切り詰めていないので印を付けてはいけない
+  test("ちょうど 200 字の review_notes には … を付けない", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+    await pool.query("update knowledge set review_notes = $2 where id = $1", [
+      id,
+      "あ".repeat(200),
+    ]);
+
+    const { items } = await pendingReviews();
+
+    assert.equal(items[0].review_notes, "あ".repeat(200));
+  });
 });
 
 describe("approve", () => {
+  test("承認すると review_notes がクリアされ承認根拠が残る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query(
+      "update knowledge set needs_review = true, review_notes = '要確認: 出典不明' where id = $1",
+      [id],
+    );
+
+    await approve(
+      id,
+      "野中",
+      "DisplayName.kt の requireTrimmedWithin(100) で裏付けた",
+      await currentUpdatedAt(id),
+    );
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.review_notes, null);
+    assert.equal(row.verified_note, "DisplayName.kt の requireTrimmedWithin(100) で裏付けた");
+  });
+
+  // クリアが情報の消失にならないこと(履歴トリガが更新前の値を保存する)を固定する
+  test("クリアされた review_notes は revisions に残る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set review_notes = '要確認: 出典不明' where id = $1", [id]);
+
+    await approve(id, "野中", "出典を確認した", await currentUpdatedAt(id));
+
+    const res = await pool.query(
+      "select snapshot from knowledge_revisions where knowledge_id = $1 order by id desc limit 1",
+      [id],
+    );
+    assert.equal(res.rows[0].snapshot.review_notes, "要確認: 出典不明");
+  });
+
   test("draft を approved にし verification=internal と確認者を記録する", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
 
-    const result = await approve(id, "野中", await currentUpdatedAt(id));
+    const result = await approve(id, "野中", "コードで裏を取った", await currentUpdatedAt(id));
 
     assert.deepEqual(result, { id, status: "approved" });
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -298,7 +422,7 @@ describe("approve", () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set verification = 'expert' where id = $1", [id]);
 
-    await approve(id, "野中", await currentUpdatedAt(id));
+    await approve(id, "野中", "コードで裏を取った", await currentUpdatedAt(id));
 
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "expert");
@@ -306,7 +430,13 @@ describe("approve", () => {
 
   test("存在しない id はエラーになる", async () => {
     await assert.rejects(
-      () => approve("00000000-0000-0000-0000-000000000000", "野中", new Date().toISOString()),
+      () =>
+        approve(
+          "00000000-0000-0000-0000-000000000000",
+          "野中",
+          "コードで裏を取った",
+          new Date().toISOString(),
+        ),
       /見つかりません/,
     );
   });
@@ -317,7 +447,10 @@ describe("approve", () => {
     // 確認ダイアログが開いている間に別の変更が入った状況を再現する
     await pool.query("update knowledge set body = '書き換え' where id = $1", [id]);
 
-    await assert.rejects(() => approve(id, "野中", staleUpdatedAt), /変更された/);
+    await assert.rejects(
+      () => approve(id, "野中", "コードで裏を取った", staleUpdatedAt),
+      /変更された/,
+    );
 
     const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");
@@ -359,6 +492,22 @@ describe("reject", () => {
       () =>
         reject("00000000-0000-0000-0000-000000000000", "理由", "野中", new Date().toISOString()),
       /見つかりません/,
+    );
+  });
+});
+
+describe("verified_note 列", () => {
+  test("knowledge と v_knowledge_approved の両方に verified_note がある", async () => {
+    const res = await pool.query(
+      `select table_name from information_schema.columns
+        where table_schema = 'public'
+          and column_name = 'verified_note'
+          and table_name in ('knowledge', 'v_knowledge_approved')
+        order by table_name`,
+    );
+    assert.deepEqual(
+      res.rows.map((r: { table_name: string }) => r.table_name),
+      ["knowledge", "v_knowledge_approved"],
     );
   });
 });

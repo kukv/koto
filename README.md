@@ -39,6 +39,7 @@ docker compose exec -T db pg_restore -U koto -d koto --clean < backups/<ファ�
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/002_add_event_type.sql
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/003_contexts_verification.sql
 docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/004_search_text_alias_names.sql
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U koto -d koto < docker/db/migrations/005_verified_note.sql
 ```
 
 ## MCPサーバの接続
@@ -143,7 +144,7 @@ koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼�
 
 一覧(`get_pending_reviews`)は既定で100件までしか返しません。返り値の `total` が `items` の件数より多いときは残りが打ち切られているので、コンテキストや種別で絞って進めてください(「household の event だけ見せて」)。
 
-承認・却下・検証レベルの設定は MCP ツール(`approve_knowledge` / `reject_knowledge` / `verify_knowledge`)から行いますが、**実行するとサーバが確認ダイアログを出し、ユーザー自身が確認者を選んで承認するまで DB は変更されません**。エージェントが勝手に承認することはできません。確認者の候補は環境変数 `KOTO_REVIEWER` で設定します(未設定だと実行できません)。
+承認・却下・検証レベルの設定は MCP ツール(`approve_knowledge` / `reject_knowledge` / `verify_knowledge`)から行いますが、**実行するとサーバが確認ダイアログを出し、ユーザー自身が確認者を選んで承認するまで DB は変更されません**。エージェントが勝手に承認することはできません。確認者の候補は環境変数 `KOTO_REVIEWER` で設定します(未設定だと実行できません)。承認・検証では根拠(何を読んで裏を取ったか)の記載が必須で、確認ダイアログに表示されたうえで記録に残ります。
 
 この確認ダイアログは MCP の elicitation を使っています。elicitation に対応していないクライアントからは、承認・却下・検証レベルの設定は実行できません。お使いのクライアントが対応しているかは各自ご確認ください。
 

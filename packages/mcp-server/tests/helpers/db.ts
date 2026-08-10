@@ -19,14 +19,15 @@ export async function seedDraft(input: {
   type?: string;
   body?: string;
   status?: string;
+  review_notes?: string;
 }): Promise<string> {
   await pool.query("insert into contexts (name) values ($1) on conflict (name) do nothing", [
     input.context,
   ]);
   const status = input.status ?? "draft";
   const res = await pool.query(
-    `insert into knowledge (type, context, title, body, status, needs_review)
-     values ($1,$2,$3,$4,$5,$6) returning id`,
+    `insert into knowledge (type, context, title, body, status, needs_review, review_notes)
+     values ($1,$2,$3,$4,$5,$6,$7) returning id`,
     [
       input.type ?? "term",
       input.context,
@@ -34,6 +35,7 @@ export async function seedDraft(input: {
       input.body ?? "本文",
       status,
       status === "draft",
+      input.review_notes ?? null,
     ],
   );
   return res.rows[0].id as string;

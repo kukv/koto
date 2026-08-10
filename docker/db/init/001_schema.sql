@@ -34,8 +34,13 @@ create table knowledge (
   verification  text not null default 'none' check (verification in ('none','internal','expert')),
   verified_by   text,
   verified_at   timestamptz,
+  -- この判定の根拠(何を読んで裏を取ったか)。verified_by / verified_at と常に同じ組で動く
+  -- (005 適用前に承認された行は note だけ null)
+  verified_note text,
   needs_review  boolean not null default false,
-  review_notes  text,                                -- 要確認事項・重複候補・却下理由など
+  -- 未解決の確認事項(重複候補など)。承認(approve)・検証(setVerification)でクリアされる。
+  -- reject(却下理由)と propose_update(更新提案メモ)は追記する(値があっても未解決とは限らない)
+  review_notes  text,
   source        jsonb,                               -- {"kind":"document"|"hearing"|"conversation","ref":...}
   created_by    text not null default 'agent',
   created_at    timestamptz not null default now(),

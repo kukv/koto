@@ -13,6 +13,12 @@ export interface ReviewTarget {
 
 export type ApprovalOutcome = { ok: true; reviewer: string } | { ok: false; message: string };
 
+/** ダイアログに追加で載せる根拠(承認根拠・検証根拠)。ラベルは呼び出し側が決める */
+export interface ApprovalNote {
+  label: string;
+  text: string;
+}
+
 /**
  * 確認者の候補(環境変数 KOTO_REVIEWER のカンマ区切り)。
  * 自由入力ではなく候補からの選択にすることで、ダイアログを矢印キーで操作できる。
@@ -24,14 +30,23 @@ function reviewerCandidates(): string[] {
     .filter(Boolean);
 }
 
+/** 長い文字列をダイアログに載せる長さに切り詰める(超えていたら末尾に … を付ける) */
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 /**
  * 人間の確認をクライアント経由で取り、確認者名を受け取る。
  * ダイアログを出せないクライアントでは実行を許可しない(エージェントの自己承認を防ぐため)。
+ *
+ * note を渡す場合、エージェントが書いた自由文だからこそレコード情報(本文・備考)より
+ * 後ろに置く。ID 取り違えの最終防波堤であるレコード情報が note に押し出されないため。
  */
 export async function requireHumanApproval(
   server: McpServer,
   message: string,
   target: ReviewTarget,
+  note?: ApprovalNote,
 ): Promise<ApprovalOutcome> {
   if (!server.server.getClientCapabilities()?.elicitation) {
     return {
@@ -50,15 +65,12 @@ export async function requireHumanApproval(
     };
   }
 
-  const excerpt = target.body.length > 300 ? `${target.body.slice(0, 300)}…` : target.body;
-  const notesExcerpt = target.review_notes
-    ? target.review_notes.length > 200
-      ? `${target.review_notes.slice(0, 200)}…`
-      : target.review_notes
-    : null;
+  const excerpt = truncate(target.body, 300);
+  const notesExcerpt = target.review_notes ? truncate(target.review_notes, 200) : null;
+  const noteExcerpt = note ? truncate(note.text, 300) : null;
   const result = await server.server.elicitInput(
     {
-      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}`,
+      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note ? note.label : ""}: ${noteExcerpt}` : ""}`,
       requestedSchema: {
         type: "object",
         properties: {
