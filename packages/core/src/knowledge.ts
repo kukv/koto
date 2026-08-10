@@ -150,7 +150,7 @@ export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, 
 export async function getKnowledge(id: string, expandRelations = true) {
   const rec = await pool.query(
     `select id, type, context, title, english_name, body, aliases, examples,
-            status, verification, verified_by, verified_at,
+            status, verification, verified_by, verified_at, verified_note,
             needs_review, review_notes, source, created_by,
             created_at, updated_at
        from knowledge where id = $1`,
@@ -323,7 +323,9 @@ export interface PendingReviewsOptions {
 export async function pendingReviews(options: PendingReviewsOptions = {}) {
   const res = await pool.query(
     `select id, type, context, title, status, verification, needs_review,
-            left(coalesce(review_notes, ''), 200) as review_notes,
+            -- 途中で切れていることが受け手に伝わるよう、切り詰めたときだけ印を付ける
+            case when length(review_notes) > 200 then left(review_notes, 200) || '…'
+                 else coalesce(review_notes, '') end as review_notes,
             created_by, created_at,
             -- window 関数は limit より先に評価されるため、絞り込み後の全件数が入る
             count(*) over () as total

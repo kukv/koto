@@ -177,6 +177,17 @@ describe("getKnowledge / addRelation", () => {
     assert.equal(await getKnowledge("00000000-0000-0000-0000-000000000000"), null);
   });
 
+  test("verified_note が返る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query("update knowledge set verified_note = '就業規則 3 条で確認' where id = $1", [
+      id,
+    ]);
+
+    const rec = (await getKnowledge(id, false)) as { verified_note: string };
+
+    assert.equal(rec.verified_note, "就業規則 3 条で確認");
+  });
+
   test("関連が両方向に 1 ホップ展開される", async () => {
     const orderId = await seedKnowledge({ context: "sales", title: "受注確定", type: "event" });
     const stockId = await seedKnowledge({ context: "sales", title: "在庫" });
@@ -330,6 +341,31 @@ describe("pendingReviews", () => {
 
     const { items } = await pendingReviews();
     assert.ok(!("total" in items[0]));
+  });
+
+  test("200 字を超える review_notes は … を付けて切り詰める", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+    await pool.query("update knowledge set review_notes = $2 where id = $1", [
+      id,
+      "あ".repeat(201),
+    ]);
+
+    const { items } = await pendingReviews();
+
+    assert.equal(items[0].review_notes, `${"あ".repeat(200)}…`);
+  });
+
+  // 境界。ちょうど 200 字は切り詰めていないので印を付けてはいけない
+  test("ちょうど 200 字の review_notes には … を付けない", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "下書き", status: "draft" });
+    await pool.query("update knowledge set review_notes = $2 where id = $1", [
+      id,
+      "あ".repeat(200),
+    ]);
+
+    const { items } = await pendingReviews();
+
+    assert.equal(items[0].review_notes, "あ".repeat(200));
   });
 });
 
