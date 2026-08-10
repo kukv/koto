@@ -362,3 +362,19 @@ describe("reject", () => {
     );
   });
 });
+
+describe("verified_note 列", () => {
+  test("knowledge と v_knowledge_approved の両方に verified_note がある", async () => {
+    const res = await pool.query(
+      `select table_name from information_schema.columns
+        where table_schema = 'public'
+          and column_name = 'verified_note'
+          and table_name in ('knowledge', 'v_knowledge_approved')
+        order by table_name`,
+    );
+    assert.deepEqual(
+      res.rows.map((r: { table_name: string }) => r.table_name),
+      ["knowledge", "v_knowledge_approved"],
+    );
+  });
+});

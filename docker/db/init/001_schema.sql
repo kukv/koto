@@ -34,6 +34,8 @@ create table knowledge (
   verification  text not null default 'none' check (verification in ('none','internal','expert')),
   verified_by   text,
   verified_at   timestamptz,
+  -- この判定の根拠(何を読んで裏を取ったか)。verified_by / verified_at と常に同じ組で動く
+  verified_note text,
   needs_review  boolean not null default false,
   review_notes  text,                                -- 要確認事項・重複候補・却下理由など
   source        jsonb,                               -- {"kind":"document"|"hearing"|"conversation","ref":...}
