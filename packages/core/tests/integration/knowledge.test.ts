@@ -135,6 +135,41 @@ describe("proposeUpdate", () => {
     assert.equal(res.rowCount, 1);
     assert.equal(res.rows[0].snapshot.body, "旧本文");
   });
+
+  test("内容の変更で verified_note も verified_by と一緒にリセットされる", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query(
+      `update knowledge
+          set verification = 'expert', verified_by = '専門家',
+              verified_at = now(), verified_note = '旧版に対する根拠'
+        where id = $1`,
+      [id],
+    );
+
+    await proposeUpdate(id, { body: "変更後" });
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verified_note, null);
+    assert.equal(row.verified_by, null);
+    assert.equal(row.verified_at, null);
+  });
+
+  test("内容以外(aliases)の変更では verified_note が維持される", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query(
+      `update knowledge
+          set verification = 'expert', verified_by = '専門家',
+              verified_at = now(), verified_note = '根拠'
+        where id = $1`,
+      [id],
+    );
+
+    await proposeUpdate(id, { aliases: [{ name: "オーダー", kind: "synonym" }] });
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verified_note, "根拠");
+    assert.equal(row.verified_by, "専門家");
+  });
 });
 
 describe("getKnowledge / addRelation", () => {
@@ -182,12 +217,32 @@ describe("setVerification", () => {
   test("検証レベルが設定され needs_review が下りる", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
-    await setVerification(id, "internal", "田中", await currentUpdatedAt(id));
+    await setVerification(id, "internal", "田中", "税務資料で確認した", await currentUpdatedAt(id));
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "internal");
     assert.equal(row.verified_by, "田中");
     assert.notEqual(row.verified_at, null);
     assert.equal(row.needs_review, false);
+  });
+
+  test("検証根拠が記録され review_notes がクリアされる", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query(
+      "update knowledge set needs_review = true, review_notes = '要確認: 税務の扱い' where id = $1",
+      [id],
+    );
+
+    await setVerification(
+      id,
+      "expert",
+      "山田税理士",
+      "顧問税理士に口頭で確認した",
+      await currentUpdatedAt(id),
+    );
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.verified_note, "顧問税理士に口頭で確認した");
+    assert.equal(row.review_notes, null);
   });
 });
 

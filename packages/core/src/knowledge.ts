@@ -126,9 +126,10 @@ export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, 
             review_notes = coalesce(review_notes || E'\n', '') || $7,
             embedding = coalesce($8::vector, embedding),
             -- 内容が変わったら検証レベルは未検証に戻す(専門家確認は旧版に対するもの)
-            verification = case when $9::boolean then 'none' else verification end,
-            verified_by  = case when $9::boolean then null else verified_by end,
-            verified_at  = case when $9::boolean then null else verified_at end
+            verification  = case when $9::boolean then 'none' else verification end,
+            verified_by   = case when $9::boolean then null else verified_by end,
+            verified_at   = case when $9::boolean then null else verified_at end,
+            verified_note = case when $9::boolean then null else verified_note end
       where id = $1`,
     [
       id,
@@ -278,15 +279,16 @@ export async function setVerification(
   id: string,
   level: "internal" | "expert",
   by: string,
+  note: string,
   expectedUpdatedAt: string,
 ) {
   const res = await pool.query(
     `update knowledge
-        set verification = $2, verified_by = $3, verified_at = now(),
-            needs_review = false
+        set verification = $2, verified_by = $3, verified_at = now(), verified_note = $4,
+            needs_review = false, review_notes = null
       -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
-      where id = $1 and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
-    [id, level, by, expectedUpdatedAt],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $5::timestamptz`,
+    [id, level, by, note, expectedUpdatedAt],
   );
   if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, verification: level };
