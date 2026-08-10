@@ -22,6 +22,33 @@ export interface ProposeInput {
 }
 
 /**
+ * 埋め込みに載せるテキスト。別名も含める —
+ * aliases は検索専用の項目であり、キーワード検索でしか効かない状態をなくすため。
+ */
+export function embeddingSource(input: {
+  title: string;
+  english_name?: string | null;
+  body: string;
+  aliases?: Alias[] | null;
+}): string {
+  const aliasNames = (input.aliases ?? []).map((a) => a.name).join(" ");
+  return [input.title, input.english_name ?? "", aliasNames, input.body].filter(Boolean).join(" ");
+}
+
+/**
+ * 埋め込みを計算し直す変更か。検証レベルのリセット条件とは別物で、aliases はこちらにだけ効く
+ * (別名を足しただけで専門家確認を無効にしない)。
+ */
+export function shouldReembed(changes: Partial<ProposeInput>): boolean {
+  return (
+    changes.title !== undefined ||
+    changes.body !== undefined ||
+    changes.english_name !== undefined ||
+    changes.aliases !== undefined
+  );
+}
+
+/**
  * 近似重複の検出: 同名・別名・english_name の完全一致 + 埋め込み類似。
  *
  * context をまたいで見る。同一 context の重複は unique(context, type, title) が防ぐので、
@@ -78,7 +105,7 @@ export async function findDuplicates(
 
 /** 新しい知識を draft として提案する(承認されるまで検索の既定対象外) */
 export async function propose(input: ProposeInput) {
-  const vec = await embed(`${input.title} ${input.english_name ?? ""} ${input.body}`);
+  const vec = await embed(embeddingSource(input));
   const duplicates = await findDuplicates(input.title, input.english_name ?? null, vec);
   const notes =
     [
@@ -131,11 +158,10 @@ export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, 
     aliases: changes.aliases ?? row.aliases,
     examples: changes.examples ?? row.examples,
   };
+  // 検証レベルのリセットは「内容」が変わったときだけ。aliases は検索専用なので含めない
   const contentChanged =
     changes.title !== undefined || changes.body !== undefined || changes.english_name !== undefined;
-  const vec = contentChanged
-    ? await embed(`${merged.title} ${merged.english_name ?? ""} ${merged.body}`)
-    : null;
+  const vec = shouldReembed(changes) ? await embed(embeddingSource(merged)) : null;
 
   await pool.query(
     `update knowledge
