@@ -38,7 +38,8 @@ function filters(includeDrafts: boolean): string {
     and ($3::text is null or k.type = $3)`;
 }
 
-const COLUMNS = `k.id, k.type, k.context, k.title, k.english_name,
+// aliases を返すのは、誤った語で引いた人に「それは禁止表記で正はこれ」を伝えるため
+const COLUMNS = `k.id, k.type, k.context, k.title, k.english_name, k.aliases,
        k.status, k.verification, k.needs_review,
        left(k.body, 400) as excerpt`;
 

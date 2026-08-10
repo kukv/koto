@@ -4,6 +4,8 @@ import {
   addRelation,
   approve,
   findDuplicates,
+  findEnglishNameConflicts,
+  forbiddenAliases,
   getKnowledge,
   listContexts,
   pendingReviews,
@@ -56,7 +58,7 @@ describe("propose", () => {
       body: "ルール本文",
     });
     assert.equal(duplicates.length, 1);
-    assert.match(String(duplicates[0].reason), /同名または別名/);
+    assert.equal(duplicates[0].reason, "同名が一致");
     const row = (await pool.query("select review_notes from knowledge where id = $1", [id]))
       .rows[0];
     assert.match(row.review_notes, /重複候補/);
@@ -66,8 +68,9 @@ describe("propose", () => {
 describe("findDuplicates", () => {
   test("タイトルは大文字小文字を無視して一致する", async () => {
     await seedKnowledge({ context: "sales", title: "Order" });
-    const dups = await findDuplicates("order", "sales", null);
+    const dups = await findDuplicates("order", null, null);
     assert.equal(dups.length, 1);
+    assert.equal(dups[0].reason, "同名が一致");
   });
 
   test("別名(alias)も一致対象になる", async () => {
@@ -76,14 +79,120 @@ describe("findDuplicates", () => {
       title: "受注",
       aliases: [{ name: "オーダー", kind: "synonym" }],
     });
-    const dups = await findDuplicates("オーダー", "sales", null);
+    const dups = await findDuplicates("オーダー", null, null);
+    assert.equal(dups.length, 1);
+    assert.equal(dups[0].reason, "別名が一致");
+  });
+
+  // 「居住者」の別名だった「住人」が別 context の独立レコードになった事故を防ぐ
+  test("別コンテキストの同名・別名も検出する", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [{ name: "住人", kind: "synonym" }],
+    });
+
+    assert.equal((await findDuplicates("居住者", null, null)).length, 1);
+    assert.equal((await findDuplicates("住人", null, null)).length, 1);
+  });
+
+  test("禁止表記への一致はそうと分かる理由が付く", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [{ name: "住人", kind: "forbidden" }],
+    });
+
+    const dups = await findDuplicates("住人", null, null);
+
+    assert.equal(dups[0].reason, "禁止表記に一致");
+  });
+
+  // english_name を同一性キーにする狙いそのもの。title が違っても同じ概念だと分かる
+  test("english_name が一致すれば別コンテキストでも検出する", async () => {
+    await seedKnowledge({ context: "resident", title: "居住者", english_name: "resident" });
+
+    const dups = await findDuplicates("住人", "resident", null);
+
+    assert.equal(dups.length, 1);
+    assert.equal(dups[0].reason, "english_name が一致");
+  });
+
+  test("english_name の一致も大文字小文字を無視する", async () => {
+    await seedKnowledge({ context: "resident", title: "居住者", english_name: "resident" });
+
+    const dups = await findDuplicates("住人", "Resident", null);
+
     assert.equal(dups.length, 1);
   });
 
-  test("別コンテキストの同名は対象外", async () => {
-    await seedKnowledge({ context: "sales", title: "受注" });
-    const dups = await findDuplicates("受注", "support", null);
+  // 多義語(同じ言葉が context で別物)は english_name が分かれるので誤検出にならない
+  test("english_name が違えば同名でも検出しない", async () => {
+    await seedKnowledge({ context: "sales", title: "注文", english_name: "sales_order" });
+
+    const dups = await findDuplicates("注文", "purchase_order", null);
+
+    assert.equal(dups.length, 1); // 同名一致だけが残る
+    assert.equal(dups[0].reason, "同名が一致");
+  });
+
+  test("english_name が null の呼び出しでは english_name 一致を見ない", async () => {
+    await seedKnowledge({ context: "sales", title: "注文", english_name: "sales_order" });
+
+    const dups = await findDuplicates("発注", null, null);
+
     assert.equal(dups.length, 0);
+  });
+});
+
+describe("findEnglishNameConflicts", () => {
+  test("同じ english_name の他レコードを返す", async () => {
+    const id = await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      english_name: "resident",
+    });
+    await seedKnowledge({ context: "session", title: "住人", english_name: "resident" });
+
+    const conflicts = await findEnglishNameConflicts(id);
+
+    assert.equal(conflicts.length, 1);
+    assert.equal(conflicts[0].title, "住人");
+    assert.equal(conflicts[0].context, "session");
+  });
+
+  test("大文字小文字は無視して突き合わせる", async () => {
+    const id = await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      english_name: "resident",
+    });
+    await seedKnowledge({ context: "session", title: "住人", english_name: "Resident" });
+
+    assert.equal((await findEnglishNameConflicts(id)).length, 1);
+  });
+
+  test("却下済み(deprecated)は衝突に数えない", async () => {
+    const id = await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      english_name: "resident",
+    });
+    await seedKnowledge({
+      context: "session",
+      title: "住人",
+      english_name: "resident",
+      status: "deprecated",
+    });
+
+    assert.deepEqual(await findEnglishNameConflicts(id), []);
+  });
+
+  test("english_name が無いレコードは衝突なし", async () => {
+    const id = await seedKnowledge({ context: "resident", title: "表示名の制限", type: "rule" });
+    await seedKnowledge({ context: "session", title: "別のルール", type: "rule" });
+
+    assert.deepEqual(await findEnglishNameConflicts(id), []);
   });
 });
 
@@ -493,6 +602,42 @@ describe("reject", () => {
         reject("00000000-0000-0000-0000-000000000000", "理由", "野中", new Date().toISOString()),
       /見つかりません/,
     );
+  });
+});
+
+describe("forbiddenAliases", () => {
+  test("承認済みレコードの禁止表記だけを返す", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [
+        { name: "住人", kind: "forbidden" },
+        { name: "レジデント", kind: "synonym" },
+      ],
+      status: "approved",
+    });
+    await seedKnowledge({
+      context: "sales",
+      title: "受注",
+      aliases: [{ name: "オーダー", kind: "forbidden" }],
+      status: "draft",
+    });
+
+    const rows = await forbiddenAliases();
+
+    assert.deepEqual(rows, [{ name: "住人", title: "居住者", context: "resident" }]);
+  });
+
+  // 日本語には単語境界が無く、1 文字だと部分一致が頻発するため対象から外す
+  test("1 文字の禁止表記は返さない", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [{ name: "客", kind: "forbidden" }],
+      status: "approved",
+    });
+
+    assert.deepEqual(await forbiddenAliases(), []);
   });
 });
 

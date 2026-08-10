@@ -371,6 +371,52 @@ describe("verify_knowledge", () => {
   });
 });
 
+describe("承認ダイアログの english_name 衝突表示", () => {
+  test("同じ english_name の既存レコードがダイアログに出る", async () => {
+    const id = await seedDraft({ context: "resident", title: "居住者", type: "term" });
+    await pool.query("update knowledge set english_name = 'resident' where id = $1", [id]);
+    const otherId = await seedDraft({
+      context: "session",
+      title: "住人",
+      type: "term",
+      status: "approved",
+    });
+    await pool.query("update knowledge set english_name = 'resident' where id = $1", [otherId]);
+
+    let shown = "";
+    const client = await connectWithElicitation((request) => {
+      shown = String(request.params.message);
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
+
+    assert.match(shown, /同じ english_name/);
+    assert.match(shown, /住人/);
+  });
+
+  test("衝突が無ければその行は出ない", async () => {
+    const id = await seedDraft({ context: "resident", title: "居住者", type: "term" });
+    await pool.query("update knowledge set english_name = 'resident' where id = $1", [id]);
+
+    let shown = "";
+    const client = await connectWithElicitation((request) => {
+      shown = String(request.params.message);
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
+
+    assert.doesNotMatch(shown, /同じ english_name/);
+  });
+});
+
 describe("get_pending_reviews", () => {
   test("context で絞り込める", async () => {
     await seedDraft({ context: "sales", title: "営業の下書き" });

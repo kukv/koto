@@ -67,6 +67,30 @@ claude mcp add koto \
 
 `KOTO_REVIEWER` は承認ダイアログに出す**確認者の候補**です。カンマ区切りで複数指定でき(`KOTO_REVIEWER=野中,田中`)、ダイアログではこの中から選びます。**未設定だと承認・却下・検証レベルの設定ができません**(誰が判断したかを記録できないため)。
 
+### 命名警告フック(任意)
+
+`forbidden` に登録した表記をコードに書いたとき、エージェントに指摘を返します。`~/.claude/settings.json` に次を足してください(`DATABASE_URL` は MCP 登録と同じ値)。
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "DATABASE_URL=postgres://koto:koto@localhost:5432/koto node ~/.local/share/koto/koto-mcp.mjs check-naming"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+書き込んだ内容だけを見ます(ファイル全体は読みません)。DB に繋がらないときは何もしません — 知識基盤の警告で編集作業が止まらないようにするためです。1 文字の禁止表記は誤検知が多いため対象外です。
+
 ### 開発時
 
 リポジトリを clone して作業する場合は、ビルド済みの `dist` を直接指します。事前に `pnpm build` を実行してください。

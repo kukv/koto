@@ -1,6 +1,7 @@
 import {
   addRelation,
   approve,
+  findEnglishNameConflicts,
   getKnowledge,
   hybridSearch,
   listContexts,
@@ -14,6 +15,7 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { type ReviewTarget, requireHumanApproval } from "./elicit.js";
+import { normalizeEnglishName, validateEnglishName } from "./english-name.js";
 
 const text = (v: unknown) => ({
   content: [
@@ -33,6 +35,9 @@ const aliasSchema = z.object({
     .describe("synonym=同義語 / forbidden=使ってはいけない表記"),
 });
 
+const ALIASES_DESCRIPTION =
+  "検索でヒットさせるための別名。ユビキタス言語としては title が正であり、aliases は知識の情報源ではない。ここに書いた語を独立した知識レコードとして登録してはいけない";
+
 /** 確認ダイアログに出す最小情報を取り出す(見つからなければ null) */
 async function reviewTarget(id: string): Promise<ReviewTarget | null> {
   const rec = await getKnowledge(id, false);
@@ -47,6 +52,7 @@ async function reviewTarget(id: string): Promise<ReviewTarget | null> {
     body: String(rec.body),
     status: String(rec.status),
     review_notes: rec.review_notes == null ? null : String(rec.review_notes),
+    english_name_conflicts: await findEnglishNameConflicts(id),
     updated_at: updatedAt,
   };
 }
@@ -59,7 +65,7 @@ export function createKotoServer(): McpServer {
     {
       title: "業務知識の検索",
       description:
-        "業務知識DBをハイブリッド検索(キーワード+ベクトル)する。クエリは単語・キーワードを空白区切りで指定すること(複数語はAND条件)。自然文の文章は語に分割されないためヒットしない。要件定義・設計・実装・命名の前に必ず関連知識を検索すること。既定では承認済み(approved)のみ返す。結果には検証レベル(none/internal/expert)が含まれる。法令・税務など専門家確認が必要な領域でexpert未満の知識に依拠する場合、その成果物に不確かさの注記を引き継ぐこと。",
+        "業務知識DBをハイブリッド検索(キーワード+ベクトル)する。クエリは単語・キーワードを空白区切りで指定すること(複数語はAND条件)。自然文の文章は語に分割されないためヒットしない。要件定義・設計・実装・命名の前に必ず関連知識を検索すること。既定では承認済み(approved)のみ返す。結果には検証レベル(none/internal/expert)が含まれる。法令・税務など専門家確認が必要な領域でexpert未満の知識に依拠する場合、その成果物に不確かさの注記を引き継ぐこと。結果の aliases に kind=forbidden の語が含まれる場合、その語は使ってはいけない表記であり、成果物では title の表記に統一すること。",
       inputSchema: {
         query: z.string().describe("検索クエリ。単語を空白区切りで(例:「世帯 招待」)。文章は不可"),
         context: z.string().optional().describe("コンテキスト(部署・領域)で絞り込み"),
@@ -163,18 +169,23 @@ export function createKotoServer(): McpServer {
     {
       title: "新しい知識の提案",
       description:
-        "会話や作業で新しく判明した用語・ルール・決定・業務イベント(コト)をdraftとして登録する。人の承認を経てapprovedになる。推測と事実を混ぜず、確認が必要な点はreview_notesに書くこと。近似重複は自動検出され結果に含まれる。eventは業務で起きる出来事(「受注確定」「在庫引当」など)を名詞化して登録する。",
+        "会話や作業で新しく判明した用語・ルール・決定・業務イベント(コト)をdraftとして登録する。人の承認を経てapprovedになる。推測と事実を混ぜず、確認が必要な点はreview_notesに書くこと。近似重複はcontextをまたいで自動検出され結果に含まれる。eventは業務で起きる出来事(「受注確定」「在庫引当」など)を名詞化して登録する。実装構造物(テーブル名・クラス名・関数名・enum)は業務知識ではないので登録しない — 判定は「業務担当者がその言葉を会話で使うか」。決定とその理由は残し、手段(どう実装しているか)は落とす — 判定は「コードを書き換えたらこの記述は嘘になるか」。",
       inputSchema: {
         type: z.enum(["term", "rule", "decision", "requirement", "faq", "event"]),
         context: z.string().describe("コンテキスト(部署・領域)"),
         title: z.string().describe("日本語名"),
-        english_name: z.string().optional().describe("コード・テーブル・APIで使う正式英語名"),
+        english_name: z
+          .string()
+          .optional()
+          .describe(
+            "title の英訳。概念の同一性キーであり「同じenglish_name=同じ概念」と扱われる。小文字snake_case(例: resident, order_confirmation)。type=term と type=event では必須、rule/decision/requirement/faq では指定するとエラーになる。クラス名・テーブル名・メソッド名などの実装識別子を入れてはいけない。決める前に search_knowledge で既存の english_name を引き、同義語を作らないこと",
+          ),
         body: z
           .string()
           .describe(
-            "定義・ルール・前提・背景 (Markdown)。type=event の場合は「## 概要 / ## アクター(誰が起こすか) / ## 対象(何に対して) / ## 事前条件 / ## 事後条件(何が成立するか) / ## 取消・失敗 / ## 順序・タイミング」の見出し構成で書く。不明な見出しは「要確認」と書く",
+            "定義・ルール・前提・背景 (Markdown)。type=event の場合は「## 概要 / ## アクター(誰が起こすか) / ## 対象(何に対して) / ## 事前条件 / ## 事後条件(何が成立するか) / ## 取消・失敗 / ## 順序・タイミング」の見出し構成で書く。不明な見出しは「要確認」と書く。状態が変わる event は事後条件の先頭に「- 状態遷移: 受注 / 未確定 → 確定」の行を書く(状態そのものは term として登録しない)",
           ),
-        aliases: z.array(aliasSchema).optional(),
+        aliases: z.array(aliasSchema).optional().describe(ALIASES_DESCRIPTION),
         examples: z.array(z.string()).optional(),
         source: z
           .record(z.string(), z.unknown())
@@ -185,11 +196,16 @@ export function createKotoServer(): McpServer {
     },
     async (args) => {
       try {
+        // 検証と保存で別々に trim すると、検証を通った値と DB に入る値がずれる(指摘1)。
+        // 同じ正規化結果を両方に使う
+        const englishName = normalizeEnglishName(args.english_name);
+        const invalid = validateEnglishName(args.type, englishName);
+        if (invalid) return text(`エラー: ${invalid}`);
         const result = await propose({
           type: args.type,
           context: args.context,
           title: args.title,
-          english_name: args.english_name,
+          english_name: englishName,
           body: args.body,
           aliases: args.aliases,
           examples: args.examples,
@@ -215,13 +231,16 @@ export function createKotoServer(): McpServer {
     {
       title: "既存知識の更新提案",
       description:
-        "既存レコードの定義・ルール等の変更を提案する。変更前の内容は履歴に自動保存され、needs_reviewが立って人のレビュー対象になる。",
+        "既存レコードの定義・ルール等の変更を提案する。変更前の内容は履歴に自動保存され、needs_reviewが立って人のレビュー対象になる。english_name は title の英訳(小文字snake_case)で、term/event 以外に指定するとエラーになる。",
       inputSchema: {
         id: z.string().uuid(),
         title: z.string().optional(),
-        english_name: z.string().optional(),
+        english_name: z
+          .string()
+          .optional()
+          .describe("title の英訳(小文字snake_case)。term/event のみ。実装識別子は不可"),
         body: z.string().optional(),
-        aliases: z.array(aliasSchema).optional(),
+        aliases: z.array(aliasSchema).optional().describe(ALIASES_DESCRIPTION),
         examples: z.array(z.string()).optional(),
         note: z.string().describe("なぜ変更するのかの説明(レビュー用)"),
       },
@@ -229,6 +248,19 @@ export function createKotoServer(): McpServer {
     async (args) => {
       try {
         const { id, note, ...changes } = args;
+        // english_name の要否は type で決まるため、更新でも対象レコードの type を見て検証する。
+        // 「指定されたか」の判定は正規化前の値で行うこと — 先に正規化すると空文字が undefined
+        // (未指定)になり、term に空文字を渡したときのエラーが出せなくなる
+        if (changes.english_name !== undefined) {
+          const rec = await getKnowledge(id, false);
+          if (!rec) return text(`知識レコードが見つかりません: ${id}`);
+          // 検証と保存で別々に trim すると、検証を通った値と DB に入る値がずれる(指摘1)。
+          // 同じ正規化結果を両方に使う
+          const englishName = normalizeEnglishName(changes.english_name);
+          const invalid = validateEnglishName(String(rec.type), englishName);
+          if (invalid) return text(`エラー: ${invalid}`);
+          changes.english_name = englishName;
+        }
         return text(await proposeUpdate(id, changes, note));
       } catch (e) {
         return fail(e);
@@ -287,7 +319,7 @@ export function createKotoServer(): McpServer {
     {
       title: "知識の承認",
       description:
-        "レビュー待ちの知識を承認し、検索の既定対象にする。承認すると未解決の確認事項(review_notes)はクリアされ、代わりに note が承認根拠として残る。note には何を読んで裏を取ったかを具体的に書くこと(この記録自体が後から参照される知識になる)。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
+        "レビュー待ちの知識を承認し、検索の既定対象にする。承認すると未解決の確認事項(review_notes)はクリアされ、代わりに note が承認根拠として残る。note には何を読んで裏を取ったかを具体的に書くこと(この記録自体が後から参照される知識になる)。同じ english_name を持つ既存レコードがあれば確認ダイアログに表示される — 統合すべきか別概念かはユーザーが判断する。実行するとユーザーに確認ダイアログが出る。ユーザーが承認しなければ何も変更されない。承認するかどうかの判断は必ずユーザーに委ねること。",
       inputSchema: {
         id: z.string().uuid(),
         note: z

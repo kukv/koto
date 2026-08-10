@@ -21,31 +21,77 @@ export interface ProposeInput {
   review_notes?: string;
 }
 
-/** 近似重複の検出: 同名/別名の完全一致 + 埋め込み類似 */
-export async function findDuplicates(title: string, context: string, vec: number[] | null) {
+/**
+ * 埋め込みに載せるテキスト。別名も含める —
+ * aliases は検索専用の項目であり、キーワード検索でしか効かない状態をなくすため。
+ */
+export function embeddingSource(input: {
+  title: string;
+  english_name?: string | null;
+  body: string;
+  aliases?: Alias[] | null;
+}): string {
+  const aliasNames = (input.aliases ?? []).map((a) => a.name).join(" ");
+  return [input.title, input.english_name ?? "", aliasNames, input.body].filter(Boolean).join(" ");
+}
+
+/**
+ * 埋め込みを計算し直す変更か。検証レベルのリセット条件とは別物で、aliases はこちらにだけ効く
+ * (別名を足しただけで専門家確認を無効にしない)。
+ */
+export function shouldReembed(changes: Partial<ProposeInput>): boolean {
+  return (
+    changes.title !== undefined ||
+    changes.body !== undefined ||
+    changes.english_name !== undefined ||
+    changes.aliases !== undefined
+  );
+}
+
+/**
+ * 近似重複の検出: 同名・別名・english_name の完全一致 + 埋め込み類似。
+ *
+ * context をまたいで見る。同一 context の重複は unique(context, type, title) が防ぐので、
+ * ここが受け持つのは「別の言葉が同じ物」(同義語)の方である。多義語(同じ言葉が context で
+ * 別物)は english_name が分かれるため、横断しても誤検出にはならない。
+ */
+export async function findDuplicates(
+  title: string,
+  englishName: string | null,
+  vec: number[] | null,
+) {
   const seen = new Map<string, Record<string, unknown>>();
 
   const byName = await pool.query(
-    `select id, title, context, type, status from knowledge
-     where context = $2
-       and (lower(title) = lower($1)
-         or exists (
-           select 1 from jsonb_array_elements(aliases) a
-           where lower(a->>'name') = lower($1)))`,
-    [title, context],
+    `select id, title, context, type, status,
+            case
+              when lower(title) = lower($1) then '同名が一致'
+              when exists (select 1 from jsonb_array_elements(aliases) a
+                            where lower(a->>'name') = lower($1)
+                              and a->>'kind' = 'forbidden') then '禁止表記に一致'
+              when exists (select 1 from jsonb_array_elements(aliases) a
+                            where lower(a->>'name') = lower($1)) then '別名が一致'
+              else 'english_name が一致'
+            end as reason
+       from knowledge
+      where lower(title) = lower($1)
+         or exists (select 1 from jsonb_array_elements(aliases) a
+                     where lower(a->>'name') = lower($1))
+         or ($2::text is not null and lower(english_name) = lower($2))`,
+    [title, englishName],
   );
   for (const r of byName.rows) {
-    seen.set(r.id, { ...r, reason: "同名または別名が一致" });
+    seen.set(r.id, r);
   }
 
   if (vec) {
     const bySim = await pool.query(
       `select id, title, context, type, status,
               round((1 - (embedding <=> $1::vector))::numeric, 3) as similarity
-       from knowledge
-       where embedding is not null
-       order by embedding <=> $1::vector
-       limit 3`,
+         from knowledge
+        where embedding is not null
+        order by embedding <=> $1::vector
+        limit 3`,
       [toVectorLiteral(vec)],
     );
     for (const r of bySim.rows) {
@@ -57,10 +103,58 @@ export async function findDuplicates(title: string, context: string, vec: number
   return [...seen.values()];
 }
 
+/**
+ * 同じ english_name を持つ他のレコード(却下済みを除く)。
+ * review_notes の重複候補は propose 時点のスナップショットなので、承認の瞬間に引き直す。
+ */
+export async function findEnglishNameConflicts(id: string) {
+  const res = await pool.query(
+    `select other.id, other.title, other.context, other.type, other.status
+       from knowledge self
+       join knowledge other
+         on lower(other.english_name) = lower(self.english_name)
+        and other.id <> self.id
+      where self.id = $1
+        and self.english_name is not null
+        and other.status <> 'deprecated'
+      order by other.context, other.title`,
+    [id],
+  );
+  return res.rows as {
+    id: string;
+    title: string;
+    context: string;
+    type: string;
+    status: string;
+  }[];
+}
+
+export interface ForbiddenAlias {
+  name: string;
+  title: string;
+  context: string;
+}
+
+/**
+ * 承認済みレコードの禁止表記。命名警告フックが 1 回だけ引く。
+ * 1 文字の語を外すのは、日本語に単語境界が無く部分一致の誤検知が頻発するため。
+ */
+export async function forbiddenAliases(): Promise<ForbiddenAlias[]> {
+  const res = await pool.query(
+    `select a->>'name' as name, k.title, k.context
+       from knowledge k, jsonb_array_elements(k.aliases) a
+      where k.status = 'approved'
+        and a->>'kind' = 'forbidden'
+        and length(a->>'name') >= 2
+      order by k.context, k.title`,
+  );
+  return res.rows as ForbiddenAlias[];
+}
+
 /** 新しい知識を draft として提案する(承認されるまで検索の既定対象外) */
 export async function propose(input: ProposeInput) {
-  const vec = await embed(`${input.title} ${input.english_name ?? ""} ${input.body}`);
-  const duplicates = await findDuplicates(input.title, input.context, vec);
+  const vec = await embed(embeddingSource(input));
+  const duplicates = await findDuplicates(input.title, input.english_name ?? null, vec);
   const notes =
     [
       input.review_notes,
@@ -112,11 +206,10 @@ export async function proposeUpdate(id: string, changes: Partial<ProposeInput>, 
     aliases: changes.aliases ?? row.aliases,
     examples: changes.examples ?? row.examples,
   };
+  // 検証レベルのリセットは「内容」が変わったときだけ。aliases は検索専用なので含めない
   const contentChanged =
     changes.title !== undefined || changes.body !== undefined || changes.english_name !== undefined;
-  const vec = contentChanged
-    ? await embed(`${merged.title} ${merged.english_name ?? ""} ${merged.body}`)
-    : null;
+  const vec = shouldReembed(changes) ? await embed(embeddingSource(merged)) : null;
 
   await pool.query(
     `update knowledge

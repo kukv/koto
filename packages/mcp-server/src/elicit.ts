@@ -8,6 +8,8 @@ export interface ReviewTarget {
   body: string;
   status: string;
   review_notes: string | null;
+  /** 同じ english_name を持つ他レコード。統合すべきか別概念かを人に判断させるために出す */
+  english_name_conflicts: { context: string; type: string; title: string; status: string }[];
   updated_at: string;
 }
 
@@ -68,9 +70,15 @@ export async function requireHumanApproval(
   const excerpt = truncate(target.body, 300);
   const notesExcerpt = target.review_notes ? truncate(target.review_notes, 200) : null;
   const noteExcerpt = note ? truncate(note.text, 300) : null;
+  // 衝突はレコード情報の直後に置く。統合の要否は本文を読んだ流れで判断されるため
+  const conflicts = target.english_name_conflicts.length
+    ? `\n\n同じ english_name の既存レコード: ${target.english_name_conflicts
+        .map((c) => `[${c.type}/${c.context}] ${c.title} (${c.status})`)
+        .join(" / ")}`
+    : "";
   const result = await server.server.elicitInput(
     {
-      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note ? note.label : ""}: ${noteExcerpt}` : ""}`,
+      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${conflicts}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note ? note.label : ""}: ${noteExcerpt}` : ""}`,
       requestedSchema: {
         type: "object",
         properties: {
