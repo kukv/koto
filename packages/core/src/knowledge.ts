@@ -129,6 +129,28 @@ export async function findEnglishNameConflicts(id: string) {
   }[];
 }
 
+export interface ForbiddenAlias {
+  name: string;
+  title: string;
+  context: string;
+}
+
+/**
+ * 承認済みレコードの禁止表記。命名警告フックが 1 回だけ引く。
+ * 1 文字の語を外すのは、日本語に単語境界が無く部分一致の誤検知が頻発するため。
+ */
+export async function forbiddenAliases(): Promise<ForbiddenAlias[]> {
+  const res = await pool.query(
+    `select a->>'name' as name, k.title, k.context
+       from knowledge k, jsonb_array_elements(k.aliases) a
+      where k.status = 'approved'
+        and a->>'kind' = 'forbidden'
+        and length(a->>'name') >= 2
+      order by k.context, k.title`,
+  );
+  return res.rows as ForbiddenAlias[];
+}
+
 /** 新しい知識を draft として提案する(承認されるまで検索の既定対象外) */
 export async function propose(input: ProposeInput) {
   const vec = await embed(embeddingSource(input));

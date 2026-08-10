@@ -5,6 +5,7 @@ import {
   approve,
   findDuplicates,
   findEnglishNameConflicts,
+  forbiddenAliases,
   getKnowledge,
   listContexts,
   pendingReviews,
@@ -601,6 +602,42 @@ describe("reject", () => {
         reject("00000000-0000-0000-0000-000000000000", "理由", "野中", new Date().toISOString()),
       /見つかりません/,
     );
+  });
+});
+
+describe("forbiddenAliases", () => {
+  test("承認済みレコードの禁止表記だけを返す", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [
+        { name: "住人", kind: "forbidden" },
+        { name: "レジデント", kind: "synonym" },
+      ],
+      status: "approved",
+    });
+    await seedKnowledge({
+      context: "sales",
+      title: "受注",
+      aliases: [{ name: "オーダー", kind: "forbidden" }],
+      status: "draft",
+    });
+
+    const rows = await forbiddenAliases();
+
+    assert.deepEqual(rows, [{ name: "住人", title: "居住者", context: "resident" }]);
+  });
+
+  // 日本語には単語境界が無く、1 文字だと部分一致が頻発するため対象から外す
+  test("1 文字の禁止表記は返さない", async () => {
+    await seedKnowledge({
+      context: "resident",
+      title: "居住者",
+      aliases: [{ name: "客", kind: "forbidden" }],
+      status: "approved",
+    });
+
+    assert.deepEqual(await forbiddenAliases(), []);
   });
 });
 
