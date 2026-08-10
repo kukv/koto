@@ -100,6 +100,72 @@ describe("propose_knowledge の english_name 検証", () => {
 
     assert.match(out, /"status": "draft"/);
   });
+
+  // 検証は trim 後の値で通るのに、保存が未加工の値のままだと同一性キーが機能しなくなる(指摘1)
+  test("前後に空白があっても trim して保存される", async () => {
+    const client = await connect();
+
+    const out = textOf(
+      await client.callTool({
+        name: "propose_knowledge",
+        arguments: {
+          type: "term",
+          context: "resident",
+          title: "居住者",
+          body: "定義",
+          english_name: "resident ",
+        },
+      }),
+    );
+
+    assert.match(out, /"status": "draft"/);
+    const res = await pool.query("select english_name from knowledge");
+    assert.equal(res.rows[0].english_name, "resident");
+  });
+
+  // 空文字が NULL でなく '' として保存されると、findDuplicates / findEnglishNameConflicts の
+  // 「english_name が一致」判定が無関係なレコード同士で '' = '' に当たってしまう(指摘1)
+  test("rule に空文字の english_name を渡すと NULL として保存される", async () => {
+    const client = await connect();
+
+    const out = textOf(
+      await client.callTool({
+        name: "propose_knowledge",
+        arguments: {
+          type: "rule",
+          context: "resident",
+          title: "表示名の文字数制限",
+          body: "1〜100 文字",
+          english_name: "",
+        },
+      }),
+    );
+
+    assert.match(out, /"status": "draft"/);
+    const res = await pool.query("select english_name from knowledge");
+    assert.equal(res.rows[0].english_name, null);
+  });
+
+  test("rule に空白のみの english_name を渡すと NULL として保存される", async () => {
+    const client = await connect();
+
+    const out = textOf(
+      await client.callTool({
+        name: "propose_knowledge",
+        arguments: {
+          type: "rule",
+          context: "resident",
+          title: "表示名の文字数制限",
+          body: "1〜100 文字",
+          english_name: "   ",
+        },
+      }),
+    );
+
+    assert.match(out, /"status": "draft"/);
+    const res = await pool.query("select english_name from knowledge");
+    assert.equal(res.rows[0].english_name, null);
+  });
 });
 
 describe("propose_update の english_name 検証", () => {
@@ -151,5 +217,44 @@ describe("propose_update の english_name 検証", () => {
     assert.doesNotMatch(out, /エラー/);
     const res = await pool.query("select body from knowledge where id = $1", [id]);
     assert.equal(res.rows[0].body, "新しい定義");
+  });
+
+  // 検証は trim 後の値で通るのに、保存が未加工の値のままだと同一性キーが機能しなくなる(指摘1)
+  test("前後に空白があっても trim して保存される", async () => {
+    const id = await seedDraft({ context: "resident", title: "居住者", type: "term" });
+    const client = await connect();
+
+    const out = textOf(
+      await client.callTool({
+        name: "propose_update",
+        arguments: { id, english_name: "resident ", note: "英語名を足す" },
+      }),
+    );
+
+    assert.doesNotMatch(out, /エラー/);
+    const res = await pool.query("select english_name from knowledge where id = $1", [id]);
+    assert.equal(res.rows[0].english_name, "resident");
+  });
+
+  // rule には english_name が不要なので、空文字を渡しても「変更なし」として既存値を保つ
+  // (NULL に強制クリアはしない)
+  test("rule に空文字の english_name を渡しても既存値は変わらない", async () => {
+    const id = await seedDraft({ context: "resident", title: "表示名の文字数制限", type: "rule" });
+    // 移行前データを模す: 規約上あってはいけないが、既存行に english_name が入っているケース
+    await pool.query("update knowledge set english_name = 'display_name_limit' where id = $1", [
+      id,
+    ]);
+    const client = await connect();
+
+    const out = textOf(
+      await client.callTool({
+        name: "propose_update",
+        arguments: { id, english_name: "", note: "空にしてみる" },
+      }),
+    );
+
+    assert.doesNotMatch(out, /エラー/);
+    const res = await pool.query("select english_name from knowledge where id = $1", [id]);
+    assert.equal(res.rows[0].english_name, "display_name_limit");
   });
 });

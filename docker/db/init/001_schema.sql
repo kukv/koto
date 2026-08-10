@@ -25,9 +25,13 @@ create table knowledge (
   type          text not null check (type in ('term','rule','decision','requirement','faq','event')),
   context       text not null references contexts(name), -- 部署・領域(マスタはcontexts)
   title         text not null,                       -- 日本語名
-  english_name  text,                                -- コード・テーブル・APIで使う正式名(1つに固定)
+  -- titleの英訳=概念の同一性キー(「同じenglish_name=同じ概念」)。小文字snake_case。term/eventのみ
+  -- で、実装識別子(クラス名・テーブル名等)は入れない。検証はMCP層で行う(既存データには違反あり)
+  english_name  text,
   body          text not null,                       -- 定義・ルール・前提・背景 (Markdown)
-  aliases       jsonb not null default '[]'::jsonb,  -- [{"name":"メンバー","kind":"synonym"|"forbidden"}]
+  -- [{"name":"メンバー","kind":"synonym"|"forbidden"}]。検索専用の項目で知識の情報源ではない。
+  -- forbidden=使ってはいけない表記
+  aliases       jsonb not null default '[]'::jsonb,
   examples      text[] not null default '{}',
   status        text not null default 'draft' check (status in ('draft','approved','deprecated')),
   -- 検証レベル: none=未検証 / internal=社内(オーナー)確認済 / expert=外部専門家確認済

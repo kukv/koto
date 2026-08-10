@@ -8,6 +8,16 @@
 const REQUIRED_TYPES = new Set(["term", "event"]);
 const SNAKE_CASE = /^[a-z][a-z0-9_]*$/;
 
+/**
+ * english_name の正規化: 前後の空白を落とし、空文字は「未指定」(undefined)にする。
+ * 検証にも保存にも必ずこの結果を使うこと — 別々に trim すると、検証は通った値と DB に
+ * 保存される値がずれる(空文字が NULL でなく '' として入る、末尾空白が残る等)。
+ */
+export function normalizeEnglishName(englishName: string | null | undefined): string | undefined {
+  const value = (englishName ?? "").trim();
+  return value === "" ? undefined : value;
+}
+
 /** 規約違反ならエラーメッセージを返す(問題なければ null) */
 export function validateEnglishName(
   type: string,

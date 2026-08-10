@@ -15,7 +15,7 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { type ReviewTarget, requireHumanApproval } from "./elicit.js";
-import { validateEnglishName } from "./english-name.js";
+import { normalizeEnglishName, validateEnglishName } from "./english-name.js";
 
 const text = (v: unknown) => ({
   content: [
@@ -196,13 +196,16 @@ export function createKotoServer(): McpServer {
     },
     async (args) => {
       try {
-        const invalid = validateEnglishName(args.type, args.english_name);
+        // 検証と保存で別々に trim すると、検証を通った値と DB に入る値がずれる(指摘1)。
+        // 同じ正規化結果を両方に使う
+        const englishName = normalizeEnglishName(args.english_name);
+        const invalid = validateEnglishName(args.type, englishName);
         if (invalid) return text(`エラー: ${invalid}`);
         const result = await propose({
           type: args.type,
           context: args.context,
           title: args.title,
-          english_name: args.english_name,
+          english_name: englishName,
           body: args.body,
           aliases: args.aliases,
           examples: args.examples,
@@ -245,12 +248,18 @@ export function createKotoServer(): McpServer {
     async (args) => {
       try {
         const { id, note, ...changes } = args;
-        // english_name の要否は type で決まるため、更新でも対象レコードの type を見て検証する
+        // english_name の要否は type で決まるため、更新でも対象レコードの type を見て検証する。
+        // 「指定されたか」の判定は正規化前の値で行うこと — 先に正規化すると空文字が undefined
+        // (未指定)になり、term に空文字を渡したときのエラーが出せなくなる
         if (changes.english_name !== undefined) {
           const rec = await getKnowledge(id, false);
           if (!rec) return text(`知識レコードが見つかりません: ${id}`);
-          const invalid = validateEnglishName(String(rec.type), changes.english_name);
+          // 検証と保存で別々に trim すると、検証を通った値と DB に入る値がずれる(指摘1)。
+          // 同じ正規化結果を両方に使う
+          const englishName = normalizeEnglishName(changes.english_name);
+          const invalid = validateEnglishName(String(rec.type), englishName);
           if (invalid) return text(`エラー: ${invalid}`);
+          changes.english_name = englishName;
         }
         return text(await proposeUpdate(id, changes, note));
       } catch (e) {
