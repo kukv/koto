@@ -24,6 +24,7 @@ pnpm --filter @kukv/koto-mcp run smoke    # 生成したバンドルの起動確
 - `packages/core/` — 共有ドメイン層(@kukv/koto-core)。propose / 承認 / 重複検出 / RRF ハイブリッド検索
 - `packages/mcp-server/` — MCP ツール11本の定義(@kukv/koto-mcp)
 - `skills/koto-import/` — エージェント対話での文書インポート手順(主経路。抽出規約はここが正。`.claude/skills/` からシンボリックリンクで参照)
+- `skills/koto-code-import/` — コード起点のインポート手順(規約は koto-import の `references/` を symlink で共有)
 
 ## 規約
 

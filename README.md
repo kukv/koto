@@ -135,11 +135,12 @@ git push origin v0.1.1
 
 ## スキルの登録(他リポジトリから使う場合)
 
-文書インポートの抽出規約はスキル `skills/koto-import/` にあります。本リポジトリ内で作業するときは `.claude/skills/` のシンボリックリンクで自動的に読み込まれますが、他のリポジトリでの作業から使う場合は、clone した本リポジトリをユーザースキルとしてリンクします:
+インポートの手順はスキル `skills/koto-import/`(文書から)と `skills/koto-code-import/`(コードから)にあります。抽出規約は前者の `references/知識レコード規約.md` が正で、後者は symlink で同じものを参照します。本リポジトリ内で作業するときは `.claude/skills/` のシンボリックリンクで自動的に読み込まれますが、他のリポジトリでの作業から使う場合は、clone した本リポジトリをユーザースキルとしてリンクします:
 
 ```bash
 mkdir -p ~/.claude/skills
 ln -s /絶対パス/koto/skills/koto-import ~/.claude/skills/koto-import
+ln -s /絶対パス/koto/skills/koto-code-import ~/.claude/skills/koto-code-import
 ```
 
 スキルの更新は clone 側で `git pull` するだけで反映されます(リンクの張り直しは不要)。
@@ -153,6 +154,16 @@ koto MCP を接続した Claude Code / Claude Desktop に文書を渡して頼�
 > この docs/仕様書.md を koto に取り込んで。context は sales で
 
 抽出はエージェント自身が行うため、koto 側で LLM API を呼ぶことはありません(課金ゼロ)。抽出の型(コト起点・event の定型見出し・推測の分離など)はリポジトリ同梱のスキル `skills/koto-import/` が与えます(Claude Code へは `.claude/skills/` のシンボリックリンク経由で読み込まれます)。候補はすべて `draft` + `needs_review` で入ります。文書に書いてあったというだけでは承認されません(社内文書は古い・間違っている前提)。読み取れなかった点は `review_notes` に「要確認」として残り、近似重複(同名・別名一致、埋め込み類似)も自動検出されます。
+
+**導線1': コードからの初期投入**
+
+実装が先にあり、文書が無い(または古い)領域では、コードから起こします:
+
+> このリポジトリの src/order 以下から koto に取り込んで。context は sales で
+
+`skills/koto-code-import/` が使われます。読み物としての中間資料は作らず、レコードの下書きを対象リポジトリの `.koto/drafts/<context>.md` に書き、確認を経て draft 投入します。下書きは使い捨てなのでコミットしません(`.gitignore` に `.koto/` を足してください)。
+
+コードからは「なぜそうなっているか」が読めないため、git 履歴と PR を追い、それでも埋まらない理由は `review_notes` に「要確認」として残ります。埋めるのは導線2(ヒアリング)の役割です。
 
 **導線2: ヒアリング**
 

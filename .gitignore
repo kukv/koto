@@ -25,6 +25,7 @@ Thumbs.db
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .superpowers/
+.koto/
 CLAUDE.local.md
 
 ### Logfiles ###
