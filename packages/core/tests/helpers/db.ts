@@ -24,14 +24,16 @@ export interface SeedKnowledgeInput {
   english_name?: string;
   aliases?: { name: string; kind: string }[];
   status?: string;
+  /** ベクトル併用経路のテスト用。1536 次元 */
+  embedding?: number[];
 }
 
 /** approved を含む任意ステータスの knowledge を直接挿入する(propose は draft しか作らないため) */
 export async function seedKnowledge(k: SeedKnowledgeInput): Promise<string> {
   await seedContext(k.context);
   const res = await pool.query(
-    `insert into knowledge (type, context, title, english_name, body, aliases, status)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7) returning id`,
+    `insert into knowledge (type, context, title, english_name, body, aliases, status, embedding)
+     values ($1,$2,$3,$4,$5,$6::jsonb,$7,$8::vector) returning id`,
     [
       k.type ?? "term",
       k.context,
@@ -40,6 +42,7 @@ export async function seedKnowledge(k: SeedKnowledgeInput): Promise<string> {
       k.body ?? "本文",
       JSON.stringify(k.aliases ?? []),
       k.status ?? "approved",
+      k.embedding ? `[${k.embedding.join(",")}]` : null,
     ],
   );
   return res.rows[0].id as string;

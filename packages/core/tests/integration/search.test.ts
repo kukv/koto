@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, test } from "vitest";
-import { hybridSearch } from "../../src/search.js";
+import { buildKeywordQuery, hybridSearch } from "../../src/search.js";
 import { pool, seedKnowledge, truncateAll } from "../helpers/db.js";
 
 beforeAll(async () => {
@@ -80,5 +80,134 @@ describe("hybridSearch(キーワード検索経路)", () => {
     const hit = rows.find((r) => r.title === "長文");
     assert.ok(hit);
     assert.ok(hit.excerpt.length <= 400);
+  });
+});
+
+describe("順位付け", () => {
+  test("title 完全一致が 1 位、次に別名完全一致、本文だけの一致は下位", async () => {
+    await seedKnowledge({ context: "rank", title: "表示名", body: "居住者が名乗る名前" });
+    await seedKnowledge({ context: "rank", title: "表示名履歴", body: "過去の名前の並び" });
+    await seedKnowledge({
+      context: "rank",
+      title: "呼び名",
+      body: "別の言い方",
+      aliases: [{ name: "表示名", kind: "synonym" }],
+    });
+    await seedKnowledge({
+      context: "rank",
+      title: "居住者",
+      body: "表示名 を持つ人。表示名 は変更できる",
+    });
+
+    const titles = (await hybridSearch("表示名", { context: "rank" })).map((r) => r.title);
+    assert.equal(titles[0], "表示名"); // rank 0
+    assert.equal(titles[1], "呼び名"); // rank 1(別名完全一致)
+    assert.equal(titles[2], "表示名履歴"); // rank 2(title 部分一致)
+    assert.equal(titles[3], "居住者"); // rank 3(本文のみ)
+  });
+
+  test("english_name の完全一致も rank 1 になる", async () => {
+    await seedKnowledge({
+      context: "en",
+      title: "受注伝票",
+      body: "注文の記録",
+      english_name: "sales_order",
+    });
+    await seedKnowledge({ context: "en", title: "説明", body: "sales_order について述べる" });
+    const titles = (await hybridSearch("sales_order", { context: "en" })).map((r) => r.title);
+    assert.equal(titles[0], "受注伝票");
+  });
+
+  test("前後の空白があっても完全一致と判定される", async () => {
+    const titles = (await hybridSearch("  表示名  ", { context: "rank" })).map((r) => r.title);
+    assert.equal(titles[0], "表示名");
+  });
+
+  test("同一の一致種別内では pgroonga_score(本文中の出現回数)で並ぶ", async () => {
+    // どちらも title 部分一致(rank 2)。本文中のクエリ語の出現回数だけが違う
+    await seedKnowledge({
+      context: "score-tie",
+      title: "並び順確認多い方",
+      body: "並び順確認 という語を繰り返す。並び順確認 は重要。並び順確認 が何度も出てくる。並び順確認 の回数を増やす。",
+    });
+    await seedKnowledge({
+      context: "score-tie",
+      title: "並び順確認少ない方",
+      body: "並び順確認 について一度だけ触れる。",
+    });
+    // 行数が少ないとプランナが btree(idx_knowledge_context)を選び pgroonga_score が
+    // 全行 0 に落ちて出現回数が順位に反映されない(search-hybrid.test.ts と同じ問題)。
+    // ノイズ行を足して PGroonga 索引が確実に選ばれるようにする
+    for (let i = 0; i < 5; i++) {
+      await seedKnowledge({
+        context: "score-tie",
+        title: `ノイズ${i}`,
+        body: `検索語とは関係ない内容${i}`,
+      });
+    }
+
+    const titles = (await hybridSearch("並び順確認", { context: "score-tie" })).map((r) => r.title);
+    assert.deepEqual(titles.slice(0, 2), ["並び順確認多い方", "並び順確認少ない方"]);
+  });
+});
+
+/** EXPLAIN の plan JSON を再帰的に辿ってノードを集める */
+function flattenPlan(node: Record<string, unknown>): Record<string, unknown>[] {
+  const children = (node.Plans as Record<string, unknown>[] | undefined) ?? [];
+  return [node, ...children.flatMap(flattenPlan)];
+}
+
+// この describe 内の EXPLAIN テストが、索引構成の退行(マルチカラム化の巻き戻し等)を
+// 検知できる唯一の実効的なテストである。単一列索引に戻しても score > 0 のテストは
+// PASS してしまう(プランナが PGroonga 索引を BitmapAnd の片側に使うため score が 0 に
+// 落ちない)ことを実測で確認済み。削除・弱体化しないこと
+describe("プラン退行の防御", () => {
+  test("既定経路(approved のみ)で全ヒットのスコアが 0 より大きい", async () => {
+    const rows = await hybridSearch("受注");
+    assert.ok(rows.length > 0, "ヒットが 0 件ではテストにならない");
+    for (const r of rows) {
+      assert.ok(
+        Number(r.score) > 0,
+        `${r.title} の score が ${r.score}。PGroonga 索引が使われていない可能性がある`,
+      );
+    }
+  });
+
+  test("既定経路のプランで PGroonga 索引が使われ status が索引条件に入る", async () => {
+    const { sql, params } = buildKeywordQuery("受注");
+    const res = await pool.query(`explain (format json) ${sql}`, params);
+    const nodes = flattenPlan(res.rows[0]["QUERY PLAN"][0].Plan);
+
+    const usesFulltextIndex = nodes.some((n) => n["Index Name"] === "idx_knowledge_fulltext");
+    assert.ok(
+      usesFulltextIndex,
+      `idx_knowledge_fulltext が使われていない: ${JSON.stringify(nodes)}`,
+    );
+
+    const cond = nodes.map((n) => String(n["Index Cond"] ?? "")).join(" ");
+    assert.ok(cond.includes("&@~"), `全文一致が索引条件に入っていない: ${cond}`);
+    assert.ok(cond.includes("status"), `status が索引条件に入っていない: ${cond}`);
+  });
+});
+
+describe("search_text 生成列", () => {
+  test("aliases の JSON キー名は全文索引に入らない", async () => {
+    await seedKnowledge({
+      context: "sales",
+      title: "注文書",
+      body: "顧客に提示する書面",
+      aliases: [{ name: "オーダーシート", kind: "synonym" }],
+    });
+    const res = await pool.query(
+      "select count(*)::int as n from knowledge where search_text &@~ 'synonym'",
+    );
+    assert.equal(res.rows[0].n, 0);
+  });
+
+  test("aliases の name は全文索引に入る", async () => {
+    const res = await pool.query(
+      "select count(*)::int as n from knowledge where search_text &@~ 'オーダーシート'",
+    );
+    assert.equal(res.rows[0].n, 1);
   });
 });
