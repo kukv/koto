@@ -279,11 +279,44 @@ describe("pendingReviews", () => {
 });
 
 describe("approve", () => {
+  test("承認すると review_notes がクリアされ承認根拠が残る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query(
+      "update knowledge set needs_review = true, review_notes = '要確認: 出典不明' where id = $1",
+      [id],
+    );
+
+    await approve(
+      id,
+      "野中",
+      "DisplayName.kt の requireTrimmedWithin(100) で裏付けた",
+      await currentUpdatedAt(id),
+    );
+
+    const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
+    assert.equal(row.review_notes, null);
+    assert.equal(row.verified_note, "DisplayName.kt の requireTrimmedWithin(100) で裏付けた");
+  });
+
+  // クリアが情報の消失にならないこと(履歴トリガが更新前の値を保存する)を固定する
+  test("クリアされた review_notes は revisions に残る", async () => {
+    const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
+    await pool.query("update knowledge set review_notes = '要確認: 出典不明' where id = $1", [id]);
+
+    await approve(id, "野中", "出典を確認した", await currentUpdatedAt(id));
+
+    const res = await pool.query(
+      "select snapshot from knowledge_revisions where knowledge_id = $1 order by id desc limit 1",
+      [id],
+    );
+    assert.equal(res.rows[0].snapshot.review_notes, "要確認: 出典不明");
+  });
+
   test("draft を approved にし verification=internal と確認者を記録する", async () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set needs_review = true where id = $1", [id]);
 
-    const result = await approve(id, "野中", await currentUpdatedAt(id));
+    const result = await approve(id, "野中", "コードで裏を取った", await currentUpdatedAt(id));
 
     assert.deepEqual(result, { id, status: "approved" });
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
@@ -298,7 +331,7 @@ describe("approve", () => {
     const id = await seedKnowledge({ context: "sales", title: "受注", status: "draft" });
     await pool.query("update knowledge set verification = 'expert' where id = $1", [id]);
 
-    await approve(id, "野中", await currentUpdatedAt(id));
+    await approve(id, "野中", "コードで裏を取った", await currentUpdatedAt(id));
 
     const row = (await pool.query("select * from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.verification, "expert");
@@ -306,7 +339,13 @@ describe("approve", () => {
 
   test("存在しない id はエラーになる", async () => {
     await assert.rejects(
-      () => approve("00000000-0000-0000-0000-000000000000", "野中", new Date().toISOString()),
+      () =>
+        approve(
+          "00000000-0000-0000-0000-000000000000",
+          "野中",
+          "コードで裏を取った",
+          new Date().toISOString(),
+        ),
       /見つかりません/,
     );
   });
@@ -317,7 +356,10 @@ describe("approve", () => {
     // 確認ダイアログが開いている間に別の変更が入った状況を再現する
     await pool.query("update knowledge set body = '書き換え' where id = $1", [id]);
 
-    await assert.rejects(() => approve(id, "野中", staleUpdatedAt), /変更された/);
+    await assert.rejects(
+      () => approve(id, "野中", "コードで裏を取った", staleUpdatedAt),
+      /変更された/,
+    );
 
     const row = (await pool.query("select status from knowledge where id = $1", [id])).rows[0];
     assert.equal(row.status, "draft");

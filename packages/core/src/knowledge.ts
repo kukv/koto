@@ -223,6 +223,9 @@ async function throwOptimisticLockError(id: string): Promise<never> {
 
 /**
  * レビューを通して承認する(検索の既定対象になる。検証レベルは internal、既に expert なら維持)。
+ * 承認は「未解決の確認事項は解決した」という宣言なので review_notes をクリアし、
+ * 代わりに note(何を根拠に承認したか)を verified_note に残す。消えた review_notes は
+ * revisions に残る。
  *
  * expectedUpdatedAt は楽観ロック用で、getKnowledge が返した updated_at(JS Date)を
  * toISOString() した文字列であることが前提(ms 精度)。to_char 等で作った独自形式の
@@ -230,15 +233,15 @@ async function throwOptimisticLockError(id: string): Promise<never> {
  *
  * deprecated なレコードの承認可否はここでは判定しない(呼び出し側の MCP 層で弾くこと)。
  */
-export async function approve(id: string, by: string, expectedUpdatedAt: string) {
+export async function approve(id: string, by: string, note: string, expectedUpdatedAt: string) {
   const res = await pool.query(
     `update knowledge
-        set status = 'approved', needs_review = false,
+        set status = 'approved', needs_review = false, review_notes = null,
             verification = case when verification = 'expert' then 'expert' else 'internal' end,
-            verified_by = $2, verified_at = now()
+            verified_by = $2, verified_at = now(), verified_note = $3
       -- pg ドライバは timestamptz を ms 精度の Date で返すため、DB 側も ms に丸めて比較する
-      where id = $1 and date_trunc('milliseconds', updated_at) = $3::timestamptz`,
-    [id, by, expectedUpdatedAt],
+      where id = $1 and date_trunc('milliseconds', updated_at) = $4::timestamptz`,
+    [id, by, note, expectedUpdatedAt],
   );
   if (res.rowCount === 0) await throwOptimisticLockError(id);
   return { id, status: "approved" as const };
