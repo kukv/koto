@@ -14,6 +14,7 @@ import {
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { type ReviewTarget, requireHumanApproval } from "./elicit.js";
+import { validateEnglishName } from "./english-name.js";
 
 const text = (v: unknown) => ({
   content: [
@@ -185,6 +186,8 @@ export function createKotoServer(): McpServer {
     },
     async (args) => {
       try {
+        const invalid = validateEnglishName(args.type, args.english_name);
+        if (invalid) return text(`エラー: ${invalid}`);
         const result = await propose({
           type: args.type,
           context: args.context,
@@ -229,6 +232,13 @@ export function createKotoServer(): McpServer {
     async (args) => {
       try {
         const { id, note, ...changes } = args;
+        // english_name の要否は type で決まるため、更新でも対象レコードの type を見て検証する
+        if (changes.english_name !== undefined) {
+          const rec = await getKnowledge(id, false);
+          if (!rec) return text(`知識レコードが見つかりません: ${id}`);
+          const invalid = validateEnglishName(String(rec.type), changes.english_name);
+          if (invalid) return text(`エラー: ${invalid}`);
+        }
         return text(await proposeUpdate(id, changes, note));
       } catch (e) {
         return fail(e);
