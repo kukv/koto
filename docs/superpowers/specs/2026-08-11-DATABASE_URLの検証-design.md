@@ -55,6 +55,8 @@ export const pool = new pg.Pool({
 "postgresql://a:b@h:5432/d"                -> ok  protocol=postgresql: host="h"
 "http://localhost/koto"                    -> ok  protocol=http:      host="localhost"
 "postgres:///koto"                         -> ok  protocol=postgres:  host=""
+"postgres://user:pass@/koto?host=/var/run/postgresql" -> throw ERR_INVALID_URL(new URL 単体では通らない)
+"/var/run/postgresql koto"                            -> throw ERR_INVALID_URL
 ```
 
 したがって判定はこの 2 つで足りる。
@@ -64,7 +66,13 @@ export const pool = new pg.Pool({
 
 **ホスト名の有無は見ない。** フィードバック 5.1 の提案は「パースできない / ホストが取れない場合」だったが、Unix ドメインソケット接続の `postgres:///koto?host=/var/run/postgresql` はホストが空文字のまま正当である。ホストの有無を条件に入れると、この正当な構成を弾く。
 
-この結果、`pg` が受け付ける非 URL 形式(`socket:/var/run/postgresql?db=koto` 等)は非対応になる。koto が文書化している接続形式は `postgres://` だけなので、許容する制限として扱う。
+**ただし `new URL()` 単体では、認証情報付きの空ホスト URL(`postgres://user:pass@/koto?host=...`)を通せない。** 空ホスト直後の `@` が構文エラーになるため。libpq でソケット接続に認証を付けるときはこの書き方が標準的で、`postgres:///db?host=...` よりむしろ一般的である。ここを弾くと、現在のエラーメッセージ(「`postgres://ユーザー:パスワード@ホスト:ポート/DB名` の形式で指定してください」)がまさにその形式で書いた人を誤誘導することになる。
+
+そこで `new URL(raw)` が失敗したときは `pg-connection-string`(`pg` が内部で使う接続文字列パーサ)と同じ再試行を挟む。`pg-connection-string@2.14.0` の `index.js:26-29` は `new URL()` が失敗すると `str.replace('@/', '@___DUMMY___/')` でダミーホストを差し込んで再試行しており、これは認証情報付きの空ホスト URL を通すための専用コードである。同じ再試行を `new URL(raw)` の catch に入れ、通ったときはスキーム検査だけを行って(ダミーを混ぜた文字列ではなく)`raw` をそのまま返す。両方失敗したら従来どおり形式エラーを投げる。
+
+この結果、判定は引き続き「パース不能」「スキーム違い」の 2 つのままで、パース不能側の判定に `pg` と同じ再試行が挟まる形になる。
+
+この結果、`pg` が受け付ける非 URL 形式は非対応になる。具体的には `socket:/var/run/postgresql?db=koto` のような URL 以外のスキームに加え、先頭が `/` の libpq 形式(`/var/run/postgresql koto`)も対象で、これは `@/` 再試行を入れても救えない(`@` を含まないため)。koto が文書化している接続形式は `postgres://` だけなので、許容する制限として扱う。
 
 ### 2.4 検証は `db.ts` の読み込み時に行い、throw する
 
@@ -87,6 +95,14 @@ DATABASE_URL の形式が不正です。postgres://ユーザー:パスワード@
 生値を含める案は採らない。壊れているのはあくまで**形式**であって、`postgres://koto:本物のパスワード@host/db` の一部が欠けただけの文字列は十分にありうる。それを stderr へ出すと MCP クライアントのログに認証情報が残る。
 
 生値が無くても、5.1 が問題にした「ホスト名 `base` はどこにも書いていない」という迷子状態は解消される。どの環境変数が悪いのかと、正しい形はどれかが両方示されるため。
+
+### 2.6 命名警告フックがエラー終了するようになる(意図的な受け入れ)
+
+`packages/mcp-server/src/check-naming.ts:1` は `@kukv/koto-core` を静的 import しており、`packages/mcp-server/src/mcp-server.ts:5` も `server.js` を静的 import している。そのため `db.ts` の throw は `checkNaming()` の `try` に入る前、モジュール読み込みの時点で起きる。`DATABASE_URL` の形式が不正な間は、Write/Edit のたびにフックプロセスがエラー終了する(PostToolUse なので編集自体は止まらないが、毎回ノイズが出る)。
+
+これを意図的な振る舞いとして受け入れる。README:92 が約束しているフェイルオープン(「DB に繋がらないときは何もしません」)は接続の失敗に向けたもので、知識基盤の警告のために編集作業を止めない趣旨である。一方 `DATABASE_URL` の形式が不正な状態は接続の失敗ではなく設定のミスであり、この状態では MCP サーバ自体も起動しない。黙って無視するより、フックのエラーとして見えている方がよい。
+
+フェイルオープンを復元するには `check-naming.ts` の `@kukv/koto-core` import と `mcp-server.ts` の `server.js` import を両方とも動的 import に変える必要があり、この設計の範囲を超える。
 
 ## 3. 変更の内容
 
@@ -159,3 +175,4 @@ export const pool = new pg.Pool({
 - `pg` の非 URL 形式(`socket:` 等)への対応(2.3)
 - 他の環境変数(`EMBEDDING_PROVIDER` / `OPENAI_API_KEY` / `KOTO_REVIEWER`)の検証。`EMBEDDING_PROVIDER` は既定 `none` で不正値は無効扱いになり、黙って別の場所に書き込む類の事故は起きない
 - フィードバックの残項目: 3.2 再 import の扱い、4.4 owner 未設定コンテキストでの承認警告、4.5 レビューをセッションとして扱う概念
+- `packages/core/tests/helpers/global-setup.ts:18` の `ADMIN_DATABASE_URL` は `process.env.ADMIN_DATABASE_URL ?? "postgres://..."` のままで、今回直したのと同じ `??` によるフォールバックの穴が残っている。テスト専用のためスコープ外とするが、同じ穴が残っている記録として書いておく

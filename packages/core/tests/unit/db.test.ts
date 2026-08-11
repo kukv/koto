@@ -25,10 +25,20 @@ describe("resolveConnectionString", () => {
     );
   });
 
-  // 生値をメッセージに混ぜると、認証情報が MCP クライアントのログに残る
-  test("エラーメッセージに受け取った値を含めない", () => {
+  // 生値をメッセージに混ぜると、認証情報が MCP クライアントのログに残る(スキーム違いの分岐)
+  test("エラーメッセージに受け取った値を含めない(スキーム違い)", () => {
     assert.throws(
       () => resolveConnectionString("http://koto:s3cret@localhost/koto"),
+      (err: unknown) => err instanceof Error && !err.message.includes("s3cret"),
+    );
+  });
+
+  // new URL() が投げる例外オブジェクトの err.input には生の接続文字列が入る。
+  // catch (e) { throw new Error(..., { cause: e }) } のような書き換えで漏れないよう、
+  // パース失敗の分岐でも検証しておく
+  test("エラーメッセージに受け取った値を含めない(パース失敗)", () => {
+    assert.throws(
+      () => resolveConnectionString("postgres://koto:s3cret@host:port/db"),
       (err: unknown) => err instanceof Error && !err.message.includes("s3cret"),
     );
   });
@@ -46,5 +56,20 @@ describe("resolveConnectionString", () => {
   test("Unix ドメインソケット接続(ホストが空)を弾かない", () => {
     const url = "postgres:///koto?host=/var/run/postgresql";
     assert.equal(resolveConnectionString(url), url);
+  });
+
+  // new URL() 単体では空ホスト直後の @ が構文エラーになる。pg-connection-string と同じ
+  // @/ → @___DUMMY___/ 再試行で通し、返り値はダミーを混ぜず raw のまま返す
+  test("認証情報付きの Unix ドメインソケット接続を弾かない", () => {
+    const url = "postgres://user:pass@/koto?host=/var/run/postgresql";
+    assert.equal(resolveConnectionString(url), url);
+  });
+
+  // 再試行でパースが通っても、スキーム検査は別途効くこと
+  test("認証情報付きの空ホスト URL でもスキーム違いは投げる", () => {
+    assert.throws(
+      () => resolveConnectionString("http://user:pass@/koto"),
+      /DATABASE_URL のスキームが不正です/,
+    );
   });
 });

@@ -23,7 +23,15 @@ export function resolveConnectionString(raw: string | undefined): string {
   try {
     url = new URL(raw);
   } catch {
-    throw new Error(`DATABASE_URL の形式が不正です。${FORMAT_HINT}`);
+    // pg-connection-string@2.14.0 index.js:26-29 は new URL() 失敗時に
+    // str.replace('@/', '@___DUMMY___/') で再試行する。認証情報付きの Unix ソケット接続
+    // (postgres://user:pass@/koto?host=/var/run/postgresql)は libpq の標準的な書き方で、
+    // 単体の new URL() では空ホスト直後の @ が構文エラーになるため、pg と同じ救済を入れる。
+    try {
+      url = new URL(raw.replace("@/", "@___DUMMY___/"));
+    } catch {
+      throw new Error(`DATABASE_URL の形式が不正です。${FORMAT_HINT}`);
+    }
   }
   // ホストの有無は見ない。postgres:///db?host=/var/run/postgresql は空ホストのまま正当
   if (!ALLOWED_PROTOCOLS.includes(url.protocol)) {
