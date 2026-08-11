@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { inspect } from "node:util";
 import { describe, test } from "vitest";
 import { resolveConnectionString } from "../../src/db.js";
 
@@ -25,21 +26,26 @@ describe("resolveConnectionString", () => {
     );
   });
 
-  // 生値をメッセージに混ぜると、認証情報が MCP クライアントのログに残る(スキーム違いの分岐)
+  // 生値を混ぜると、認証情報が MCP クライアントのログに残る(スキーム違いの分岐)。
+  // err.message だけでなく inspect(err, { depth: null }) でエラーオブジェクトのどこにも
+  // 生値が現れないことを見る。message しか見ないと、将来 catch (e) { throw new Error(msg,
+  // { cause: e }) } のような書き換えが入ったときに err.cause.input(new URL() の例外が持つ
+  // 生の接続文字列)経由の漏洩を検知できない
   test("エラーメッセージに受け取った値を含めない(スキーム違い)", () => {
     assert.throws(
       () => resolveConnectionString("http://koto:s3cret@localhost/koto"),
-      (err: unknown) => err instanceof Error && !err.message.includes("s3cret"),
+      (err: unknown) => err instanceof Error && !inspect(err, { depth: null }).includes("s3cret"),
     );
   });
 
   // new URL() が投げる例外オブジェクトの err.input には生の接続文字列が入る。
-  // catch (e) { throw new Error(..., { cause: e }) } のような書き換えで漏れないよう、
-  // パース失敗の分岐でも検証しておく
+  // catch (e) { throw new Error(msg, { cause: e }) } のような書き換えが入っても
+  // err.cause.input 経由の漏洩を検知できるよう、パース失敗の分岐でも
+  // エラーオブジェクト全体を見て検証しておく
   test("エラーメッセージに受け取った値を含めない(パース失敗)", () => {
     assert.throws(
       () => resolveConnectionString("postgres://koto:s3cret@host:port/db"),
-      (err: unknown) => err instanceof Error && !err.message.includes("s3cret"),
+      (err: unknown) => err instanceof Error && !inspect(err, { depth: null }).includes("s3cret"),
     );
   });
 

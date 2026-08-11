@@ -100,7 +100,7 @@ DATABASE_URL の形式が不正です。postgres://ユーザー:パスワード@
 
 `packages/mcp-server/src/check-naming.ts:1` は `@kukv/koto-core` を静的 import しており、`packages/mcp-server/src/mcp-server.ts:5` も `server.js` を静的 import している。そのため `db.ts` の throw は `checkNaming()` の `try` に入る前、モジュール読み込みの時点で起きる。`DATABASE_URL` の形式が不正な間は、Write/Edit のたびにフックプロセスがエラー終了する(PostToolUse なので編集自体は止まらないが、毎回ノイズが出る)。
 
-これを意図的な振る舞いとして受け入れる。README:92 が約束しているフェイルオープン(「DB に繋がらないときは何もしません」)は接続の失敗に向けたもので、知識基盤の警告のために編集作業を止めない趣旨である。一方 `DATABASE_URL` の形式が不正な状態は接続の失敗ではなく設定のミスであり、この状態では MCP サーバ自体も起動しない。黙って無視するより、フックのエラーとして見えている方がよい。
+これを意図的な振る舞いとして受け入れる。README:94 が約束しているフェイルオープン(「DB に繋がらないときは何もしません」)は接続の失敗に向けたもので、知識基盤の警告のために編集作業を止めない趣旨である。一方 `DATABASE_URL` の形式が不正な状態は接続の失敗ではなく設定のミスであり、この状態では MCP サーバ自体も起動しない。黙って無視するより、フックのエラーとして見えている方がよい。
 
 フェイルオープンを復元するには `check-naming.ts` の `@kukv/koto-core` import と `mcp-server.ts` の `server.js` import を両方とも動的 import に変える必要があり、この設計の範囲を超える。
 
