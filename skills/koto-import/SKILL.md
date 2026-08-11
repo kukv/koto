@@ -9,7 +9,7 @@ description: Use when ユーザーが文書(仕様書・Wiki・議事録・メ�
 
 ## 前提
 
-- koto MCP(`search_knowledge` / `propose_knowledge` / `propose_update` / `list_contexts`)が接続されていること
+- koto MCP(`search_knowledge` / `get_knowledge` / `propose_knowledge` / `propose_update` / `list_contexts`)が接続されていること
 - context(部署・領域)が未指定ならユーザーに確認する。部署名の仮タグでよい
 
 ## 手順
@@ -17,13 +17,12 @@ description: Use when ユーザーが文書(仕様書・Wiki・議事録・メ�
 1. **`references/知識レコード規約.md` を読む**(このスキルと同じディレクトリ)。何を入れ何を落とすか、title / english_name / aliases の書き方はすべてそこが正
 2. 文書を Read で読む。長い文書は見出し単位で区切って順に処理する
 3. 下の抽出規約に従って候補を抽出する
-4. 候補ごとに `search_knowledge` で既存知識を確認し、3分岐する:
-   - ヒットなし → `propose_knowledge`
-   - 既存と矛盾・不足 → `propose_update`
-   - 内容が一致 → 登録しない(重複を作らない)
+4. **既存と突き合わせて 3 分岐を決める。** 候補ごとに `search_knowledge` を `include_drafts: true` で引き、`新規`(`propose_knowledge`)/ `更新`(`propose_update`)/ `登録しない` を決める。既定は承認済みのみが対象で、このスキルの投入物はすべて draft のまま溜まるため、既定のままだと前回自分が入れたレコードが見えず二重に作る
+   - **`context` で絞り込まない。** 同義語(別の言葉が同じ物)は別の context に居るので、対象 context だけを見ると取りこぼす
+   - **英訳を発明する前に引く。** english_name の候補語でも検索する(`search_text` に english_name が含まれるので `resident` で引けば `居住者` が出る)。既存語彙があればそれに合わせる
+   - **「内容が一致する」と判定する前に `get_knowledge` で本文全文を読む。** `search_knowledge` が返すのは抜粋で、抜粋だけで一致と判断すると差分を落とす
+   - 既存が見つかったときの扱いは「2 回目以降の取り込み」に従う
 5. 最後に「登録件数 / スキップ件数 / 要確認事項の一覧」を報告する
-
-**手順4の検索は title と english_name の両方で引く。** `search_text` には english_name が含まれるので、`resident` で引けば `居住者` がヒットする。英訳を先に発明してしまうと同義語の重複が生まれるため、**英語名を決める前に既存語彙を見る**。
 
 ## 抽出規約
 
@@ -37,6 +36,29 @@ description: Use when ユーザーが文書(仕様書・Wiki・議事録・メ�
 - 同じ言葉が文脈により別物を指す兆候(多義語)があれば、review_notes に必ず記載する
 - 表記揺れ・別名は `aliases` に `kind: "synonym"`、使ってはいけない表記は `kind: "forbidden"` で登録する。**aliases は検索専用**で、alias を独立したレコードにしてはいけない
 - `source` は必ずオブジェクト形式で渡す: `{"kind": "document", "ref": "<ファイルパス>", "imported_at": "<YYYY-MM-DD>"}`
+
+## 2 回目以降の取り込み
+
+同じ文書、あるいは同じ領域を扱う別の文書をもう一度取り込むときの規約。
+
+**knowledge の正は koto 側にある。** 文書は取り込みの入力であって同期対象ではない。再取り込みは「文書側に新しい情報があるか」を見る行為であって、「文書の内容で koto を上書きする」行為ではない。元文書に import 済みの印を付けたり、koto での修正を文書へ還流させたりはしない。
+
+抽出規約を通したうえで、なお文書と koto の記述が食い違う(文書にあって koto に無い / 文書と koto が矛盾する)ときは、**相手の `status` で分ける**。
+
+| 相手 | 呼び方 |
+|---|---|
+| `draft` | `propose_update` に `body` を渡して本文を直す |
+| `approved` | `propose_update` を **`id` と `note` だけ**で呼ぶ。`body` を渡さない |
+
+承認済みの本文を書き換えないのは、承認が人が中身を見て通した判定だからで、文書に書いてあるという理由だけで上書きするとその判定が黙って消える。`note` だけの呼び出しでも `needs_review` は立ち `review_notes` に積まれるので、人には届く(検証レベルも保たれる)。
+
+**矛盾のときは、どちらが正しいかの結論を書かない。** 文書が古いのか koto が古いのか業務が変わったのかはエージェントには読めない。`note` に文書側の記述と koto 側の記述を両方書き、判定は承認者に渡す。
+
+**`verified_note` に「落とした」と書かれている記述は再提起しない。** 承認者は、文書から意図して落とした記述を承認時の `note` に残す。これは `get_knowledge` が `verified_note` として返すので、手順 4 で本文全文を読むときに一緒に確認する。
+
+**`source` は初回のまま残る。** `propose_update` に `source` を渡す引数は無い。新しい出典は `note` に添える。
+
+**`propose_knowledge` が重複エラーで失敗したら、それは検索漏れのサイン。** `(context, type, title)` は一意制約なので、既存があるのに手順 4 で見つけられなかったということ。`search_knowledge` で引き直して `propose_update` に回す。
 
 ## 注意
 
