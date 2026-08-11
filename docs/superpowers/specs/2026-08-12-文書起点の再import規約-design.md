@@ -2,7 +2,7 @@
 
 > 記録日: 2026-08-12
 > 対象: `docs/フィードバック_2026-08-10_mindstock承認作業.md` の 3.2(知識の「正」がどこにあるかが決まっていない)
-> 前提環境: knowledge 231 件(approved 10 / draft 219)、`skills/koto-import/` と `skills/koto-code-import/` の 2 導線が稼働
+> 前提環境: knowledge 251 件(2026-08-12 実数確認: approved 10 / draft 238 / deprecated 3)、`skills/koto-import/` と `skills/koto-code-import/` の 2 導線が稼働
 
 フィードバックの優先度表で「中」の #5。コード起点は先行して決着済み(設計記録 224 行)なので、本設計は**文書起点だけ**を扱う。
 
@@ -83,6 +83,8 @@ mindstock で import した 26 件の `source.ref` はすべて `docs/knowledge/
 
 矛盾の場合、どちらが正しいかはエージェントには判定できない(文書が古いのか、koto が古いのか、業務が変わったのかが読めない)。`note` には**どちらが正しいかの結論ではなく、文書側の記述と koto 側の記述を両方**書く。判定は承認者が行う。
 
+`note` だけの提起を受けて本文を直すのは、承認者がレビューの場で判断したときであり、そのときだけ `body` 付きの `propose_update` を使う。この経路は承認ゲートを通らない(`propose_update` は `status` を変えないので、書き換えた瞬間から approved として検索に出る)。`body` を渡すので `contentChanged` が真になり、`verification` と `verified_note` はリセットされる(上記)。塞がっている経路ではなく、この非対称の裏側として存在する。
+
 ### 2.4 承認時の `note` に「意図して落とした記述」も書く
 
 2.3 だけでは、人が「この記述は要らない」と判断しても次の再 import で同じ差分がまた提起される。承認は `review_notes` を `null` にする(PR #29)ので、判断の跡が残らないため。
@@ -92,6 +94,8 @@ mindstock で import した 26 件の `source.ref` はすべて `docs/knowledge/
 スキーマ変更も引数追加も要らない。専用の列やフィールドを新設する案は採らない — マイグレーションとツール引数の追加に見合うほどの問題ではなく、`verified_note` が既に「その承認で人が何を考えたか」を残す欄として存在する。
 
 **既存 231 件の `verified_note` には書かれていない。** 埋め直しもしない(内容を知っているのは承認した人だけで、機械的には復元できない)。効くのは今後の承認分からになる。
+
+**既知の限界: `verified_note` は蓄積されず、置換される。** `approve`(再承認)・`setVerification`(検証レベル設定)はいずれも `verified_note` を全置換し、`body` 付きの `propose_update` は内容変更時に `null` に戻す(`packages/core/src/knowledge.ts`)。この規約の定常サイクルは「再取り込み → `note` だけの `propose_update` → `needs_review` → 人が再承認」であり、その再承認のたびに前回の「落とした記述」は承認者が書き写さない限り消える。しかも承認の確認ダイアログ(`packages/mcp-server/src/elicit.ts` の `reviewTarget` / `server.ts`)は既存の `verified_note` を表示しないため、承認者は自分が何を上書きしようとしているのかを見ないまま上書きする。引き継ぎは承認者の手作業に依存する。ダイアログに既存の `verified_note` を出すところまでは今回の範囲に含めない。
 
 ### 2.5 `source` は初回のまま残す
 
