@@ -70,7 +70,7 @@ export const pool = new pg.Pool({
 
 そこで `new URL(raw)` が失敗したときは `pg-connection-string`(`pg` が内部で使う接続文字列パーサ)と同じ再試行を挟む。`pg-connection-string@2.14.0` の `index.js:26-29` は `new URL()` が失敗すると `str.replace('@/', '@___DUMMY___/')` でダミーホストを差し込んで再試行しており、これは認証情報付きの空ホスト URL を通すための専用コードである。同じ再試行を `new URL(raw)` の catch に入れ、通ったときはスキーム検査だけを行って(ダミーを混ぜた文字列ではなく)`raw` をそのまま返す。両方失敗したら従来どおり形式エラーを投げる。
 
-この結果、判定は引き続き「パース不能」「スキーム違い」の 2 つのままで、パース不能側の判定に `pg` と同じ再試行が挟まる形になる。
+判定の数自体は変わらず、引き続き「パース不能」「スキーム違い」の 2 つのままで、パース不能側の判定内部に `pg` と同じ再試行が挟まる形になる。
 
 この結果、`pg` が受け付ける非 URL 形式は非対応になる。具体的には `socket:/var/run/postgresql?db=koto` のような URL 以外のスキームに加え、先頭が `/` の libpq 形式(`/var/run/postgresql koto`)も対象で、これは `@/` 再試行を入れても救えない(`@` を含まないため)。koto が文書化している接続形式は `postgres://` だけなので、許容する制限として扱う。
 
@@ -118,9 +118,14 @@ const FORMAT_HINT =
   "(例: postgres://koto:koto@localhost:5432/koto)";
 
 /**
- * DATABASE_URL を解決する。未設定なら既定値、形式が不正なら throw する。
- * pg は接続文字列を new URL(str, "postgres://base") で解釈するため、`...` のような
- * 壊れた値でもホスト `base` として通ってしまい、最初のクエリまで失敗が遅れる。
+ * DATABASE_URL を解決する。未設定なら既定値、形式が不正なら投げる。
+ *
+ * pg は接続文字列を new URL(str, "postgres://base") で解釈するため、`...` のような壊れた値でも
+ * ホスト base として通る。new pg.Pool() は接続を張らないので生成も成功し、最初のクエリで初めて
+ * `EAI_AGAIN base` として失敗する。起動時に弾いて原因を名指しする。
+ *
+ * 不正値を既定値へフォールバックさせないのは、意図しない DB に draft を書き込む方が、
+ * 繋がらないことより害が大きいため。エラーメッセージに受け取った値は含めない(認証情報が残る)。
  */
 export function resolveConnectionString(raw: string | undefined): string {
   if (raw === undefined) return DEFAULT_CONNECTION_STRING;
@@ -129,8 +134,17 @@ export function resolveConnectionString(raw: string | undefined): string {
   try {
     url = new URL(raw);
   } catch {
-    throw new Error(`DATABASE_URL の形式が不正です。${FORMAT_HINT}`);
+    // pg-connection-string@2.14.0 index.js:26-29 は new URL() 失敗時に
+    // str.replace('@/', '@___DUMMY___/') で再試行する。認証情報付きの Unix ソケット接続
+    // (postgres://user:pass@/koto?host=/var/run/postgresql)は libpq の標準的な書き方で、
+    // 単体の new URL() では空ホスト直後の @ が構文エラーになるため、pg と同じ救済を入れる。
+    try {
+      url = new URL(raw.replace("@/", "@___DUMMY___/"));
+    } catch {
+      throw new Error(`DATABASE_URL の形式が不正です。${FORMAT_HINT}`);
+    }
   }
+  // ホストの有無は見ない。postgres:///db?host=/var/run/postgresql は空ホストのまま正当
   if (!ALLOWED_PROTOCOLS.includes(url.protocol)) {
     throw new Error(
       `DATABASE_URL のスキームが不正です。postgres: または postgresql: を期待しましたが ${url.protocol} でした。${FORMAT_HINT}`,
@@ -151,7 +165,7 @@ export const pool = new pg.Pool({
 ### 3.2 波及しないもの
 
 - `vitest.config.ts` は `test.env` で `DATABASE_URL` を注入しているため、既存テストは影響を受けない
-- `README.md` / `.env.example` に書かれている接続文字列はすべて `postgres://` 形式で、現行の記述のまま正しい
+- `.env.example` に書かれている接続文字列は `postgres://` 形式で、現行の記述のまま正しく変更しない。`README.md` は接続文字列自体は変更していないが、命名警告フックの節(形式不正時もフックがエラー終了する旨)と MCP サーバの接続の節(起動しないときは `DATABASE_URL` の形式と MCP ログを確認する旨)に 1 文ずつ追記した
 - `docker/db/` 配下、マイグレーションには一切触れない
 
 ## 4. テスト
@@ -168,11 +182,14 @@ export const pool = new pg.Pool({
 | 6 | `"postgresql://a:b@h:5432/d"` | そのまま返す | `postgresql:` を許容し忘れる |
 | 7 | `"postgres:///koto?host=/var/run/postgresql"` | そのまま返す | ホストの有無を条件に入れ、Unix ソケット接続を弾く(2.3) |
 | 8 | `"http://koto:s3cret@localhost/koto"` | throw し、メッセージに `s3cret` が含まれない | 生値を混ぜる実装に戻り、認証情報が stderr に流れる(2.5)。パスワードを含む値を使わないと、この検証は空振りする |
+| 9 | `"postgres://koto:s3cret@host:port/db"` | throw し、メッセージに `s3cret` が含まれない | パース失敗の分岐で生値が漏れる。`new URL()` の例外は `err.input` に生値を持つので、`cause` で繋ぐ書き換えが入ると漏れる |
+| 10 | `"postgres://user:pass@/koto?host=/var/run/postgresql"` | そのまま返す | 認証情報付きのソケット接続を弾く(2.3) |
+| 11 | `"http://user:pass@/koto"` | throw | `@/` 再試行が通ったあとスキーム検査が飛ばされる |
 
 ## 5. 本設計が扱わないもの
 
 - 接続の疎通確認(起動時に実際に `select 1` を投げるなど)。形式の検証だけを行う。DB が落ちているケースは元々 `EAI_AGAIN` / `ECONNREFUSED` で意味の分かるエラーが出ており、5.1 の問題ではない
-- `pg` の非 URL 形式(`socket:` 等)への対応(2.3)
+- `pg` の非 URL 形式への対応。`socket:` 等の URL 以外のスキームに加え、先頭が `/` の libpq 形式(`/var/run/postgresql koto`)も非対応(2.3)
 - 他の環境変数(`EMBEDDING_PROVIDER` / `OPENAI_API_KEY` / `KOTO_REVIEWER`)の検証。`EMBEDDING_PROVIDER` は既定 `none` で不正値は無効扱いになり、黙って別の場所に書き込む類の事故は起きない
 - フィードバックの残項目: 3.2 再 import の扱い、4.4 owner 未設定コンテキストでの承認警告、4.5 レビューをセッションとして扱う概念
 - `packages/core/tests/helpers/global-setup.ts:18` の `ADMIN_DATABASE_URL` は `process.env.ADMIN_DATABASE_URL ?? "postgres://..."` のままで、今回直したのと同じ `??` によるフォールバックの穴が残っている。テスト専用のためスコープ外とするが、同じ穴が残っている記録として書いておく
