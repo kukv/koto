@@ -4,6 +4,7 @@ export {
   type Alias,
   addRelation,
   approve,
+  contextOwner,
   type ForbiddenAlias,
   findDuplicates,
   findEnglishNameConflicts,

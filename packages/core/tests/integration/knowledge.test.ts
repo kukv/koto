@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, test } from "vitest";
 import {
   addRelation,
   approve,
+  contextOwner,
   findDuplicates,
   findEnglishNameConflicts,
   forbiddenAliases,
@@ -654,5 +655,22 @@ describe("verified_note 列", () => {
       res.rows.map((r: { table_name: string }) => r.table_name),
       ["knowledge", "v_knowledge_approved"],
     );
+  });
+});
+
+describe("contextOwner", () => {
+  test("owner が設定されていればそれを返す", async () => {
+    await upsertContext("sales", { owner: "経理部" });
+    assert.equal(await contextOwner("sales"), "経理部");
+  });
+
+  test("owner が未設定なら null を返す", async () => {
+    await seedKnowledge({ context: "sales", title: "受注" });
+    assert.equal(await contextOwner("sales"), null);
+  });
+
+  // 呼び出し側で「行が無い」と「owner が空」を区別させないため、例外にしない
+  test("存在しない context 名でも null を返す(例外にしない)", async () => {
+    assert.equal(await contextOwner("存在しない領域"), null);
   });
 });
