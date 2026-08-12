@@ -478,3 +478,76 @@ describe("get_pending_reviews", () => {
     assert.equal(payload.items.length, 2);
   });
 });
+
+describe("承認ダイアログの owner 未設定警告", () => {
+  test("owner 未設定の領域では警告が出る", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
+
+    assert.match(shownMessage, /⚠ この領域には承認責任者\(owner\)が未設定です/);
+    // レコード行の直後に出る(ID取り違えの最終防波堤であるレコード情報を押し下げない)
+    assert.ok(
+      shownMessage.indexOf("⚠") > shownMessage.indexOf("[term/sales]") &&
+        shownMessage.indexOf("⚠") < shownMessage.indexOf("本文"),
+    );
+  });
+
+  test("owner が設定されていれば警告は出ない", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    await pool.query("update contexts set owner = $2 where name = $1", ["sales", "経理部"]);
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "approve_knowledge",
+      arguments: { id, note: "コードで裏を取った" },
+    });
+
+    assert.ok(!shownMessage.includes("承認責任者"));
+  });
+
+  // 3 ツールは同じ requireHumanApproval を通る。承認だけに効く実装になっていないことを固定する
+  test("reject_knowledge でも警告が出る", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "reject_knowledge",
+      arguments: { id, reason: "業務知識ではない" },
+    });
+
+    assert.match(shownMessage, /⚠ この領域には承認責任者\(owner\)が未設定です/);
+  });
+
+  test("verify_knowledge でも警告が出る", async () => {
+    const id = await seedDraft({ context: "sales", title: "受注" });
+    let shownMessage = "";
+    const client = await connectWithElicitation((request) => {
+      shownMessage = request.params.message;
+      return { action: "accept", content: { reviewer: "野中" } };
+    });
+
+    await client.callTool({
+      name: "verify_knowledge",
+      arguments: { id, level: "internal", note: "社内のコードを読んで確認した" },
+    });
+
+    assert.match(shownMessage, /⚠ この領域には承認責任者\(owner\)が未設定です/);
+  });
+});
