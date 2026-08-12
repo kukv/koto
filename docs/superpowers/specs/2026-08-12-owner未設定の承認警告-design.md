@@ -1,0 +1,155 @@
+# 設計 — owner 未設定コンテキストでの承認警告
+
+> 記録日: 2026-08-12
+> 対象: `docs/フィードバック_2026-08-10_mindstock承認作業.md` の 4.4(`contexts` の owner が空のまま承認できてしまう)
+> 前提環境: knowledge 251 件、contexts 9 件(2026-08-12 実数確認: owner が設定されているのは `test` の 1 件のみ)
+
+フィードバックの優先度表で「低」の #9。これで優先度表(節 7)の 9 項目と設計見直し 7 項目はすべて対応済みになる。表に載っていない 4.5(レビューをセッションとして扱う概念)は残る。
+
+## 1. 何が壊れているか
+
+設計記録 2.5 の中核は「知識の正しさを判定できる人は知識の種類ごとに違う」で、それを `contexts.owner`(承認責任者)でデータ化する設計だった。しかし実際は owner が空のまま 10 件が承認できた。
+
+現在の設定状況(2026-08-12 実測):
+
+```
+barcode        | (未設定)      koto           | (未設定)      resident | (未設定)
+catalog        | (未設定)      reimport-check | (未設定)      session  | (未設定)
+household      | (未設定)      inventory      | (未設定)      test     | kukv
+```
+
+9 領域中 8 領域が未設定である。
+
+確認ダイアログを組み立てる `reviewTarget`(`packages/mcp-server/src/server.ts:42-58`)は id / type / context / title / body / status / review_notes / english_name の衝突を渡すが、**`contexts` の情報を一切見ていない**。誰も承認責任者に指定されていない領域の知識を、誰でも承認できる。`KOTO_REVIEWER` の値がそのまま `verified_by` に入るだけである。
+
+実験段階(承認者 1 人)では実害が無いが、設計の中核概念が実装では単なる自由記述メモになっている。
+
+## 2. 決めたこと
+
+### 2.1 止めずに警告する
+
+owner が未設定でも実行は止めない。確認ダイアログの本文に警告を出し、人がそれを見て進めるかやめるかを選ぶ。
+
+承認・却下・検証レベルの設定は既に人間の確認を強制する経路になっている(`requireHumanApproval`)。そこに乗せるのが最も自然で、実験段階の運用を止めない。
+
+止める案は採らない。現状 9 領域中 8 領域が未設定であり、止めると進行中の作業がすべて止まる。owner を先に埋める作業が必要になるが、それは「誰が判定できるか」という組織のドメイン知識であり、ヒアリングで埋めるべきもの(設計記録 2.5)。ツールの都合で先回りして埋めさせるのは順序が逆になる。
+
+### 2.2 承認・却下・検証の 3 つすべてに出す
+
+`approve_knowledge` / `reject_knowledge` / `verify_knowledge` はいずれも `requireHumanApproval`(`packages/mcp-server/src/elicit.ts`)を通る。そこに 1 か所入れれば 3 つとも揃う。
+
+「この判断を下せる人が定義されていない」という意味は、承認でも却下でも検証でも同じである。却下だけ外す案は採らない — 却下は「この知識は違う」という判定であり、判定である以上は同じ問題を持つ。
+
+### 2.3 警告はレコード行の直後に置く
+
+ダイアログの本文は現在この順で組み立てられている(`elicit.ts` の `elicitInput`)。
+
+```
+<質問文>
+
+[<type>/<context>] <title> (status: <status>)
+
+<本文抜粋>
+<english_name 衝突>
+備考: <review_notes 抜粋>
+<根拠ラベル>: <note 抜粋>
+```
+
+警告はレコード行の直後、本文抜粋の前に置く。
+
+```
+この知識を承認しますか?
+
+[term/resident] 居住者 (status: draft)
+⚠ この領域には承認責任者(owner)が未設定です
+
+mindstock を利用する個人。世帯に所属し、在庫の記録者となる。…
+```
+
+context が書かれている行の注釈として付く形になり、レコード情報の位置を下に押し下げない。`elicit.ts` のコメントにあるとおり、レコード情報は ID 取り違えの最終防波堤なので、押し下げる置き方は避ける。
+
+### 2.4 警告文は 1 行だけにする
+
+```
+⚠ この領域には承認責任者(owner)が未設定です
+```
+
+「`upsert_context` で設定できます」のような操作案内は**入れない**。ダイアログは判断のための場であり、操作を案内する場ではない。ダイアログを読むのは人間で、その場でツールを実行するわけでもない。設定方法は README 側に書く。
+
+## 3. 変更の内容
+
+### 3.1 `packages/core/src/knowledge.ts`
+
+`contexts` から owner を 1 件引く関数を追加する。
+
+```ts
+/** コンテキストの承認責任者。未設定・未登録なら null */
+export async function contextOwner(name: string): Promise<string | null> {
+  const res = await pool.query(`select owner from contexts where name = $1`, [name]);
+  return (res.rows[0]?.owner as string | null) ?? null;
+}
+```
+
+未登録の context 名でも `null` を返す。`knowledge.context` には `references contexts(name)` の外部キーがある(`docker/db/init/001_schema.sql:26`)ので、実際のレコードから引く限り未登録にはならないが、呼び出し側で分岐が増えないようにする。
+
+`packages/core/src/index.ts` の公開 API に追加する。MCP サーバ側から使うため。
+
+### 3.2 `packages/mcp-server/src/elicit.ts`
+
+`ReviewTarget` に 1 フィールド足す。
+
+```ts
+  /** コンテキストの承認責任者。null なら誰が判定できるか未定義であることを警告する */
+  context_owner: string | null;
+```
+
+メッセージの組み立てで、レコード行の直後に警告行を挟む。
+
+```ts
+const ownerWarning = target.context_owner ? "" : "\n⚠ この領域には承認責任者(owner)が未設定です";
+```
+
+### 3.3 `packages/mcp-server/src/server.ts`
+
+`reviewTarget()` が `contextOwner()` を呼んで詰める。承認は人が 1 件ずつ見る操作なので、クエリが 1 本増えることは問題にならない。
+
+引数・戻り値・ツールの説明は変えない。
+
+### 3.4 波及
+
+- `README.md` の承認の節に 1 文。警告が出たら `upsert_context` で owner を設定する導線
+- `docs/業務知識基盤_設計記録.md` 2.5 に追記。「owner 未設定として可視化」の可視化先が `list_contexts` の一覧だけでなく確認ダイアログにも増えたこと
+- `upsert_context` のツール説明は既に owner を説明しているので変更しない
+- スキーマ・マイグレーションには触れない
+
+## 4. テスト
+
+### 4.1 core 層
+
+`packages/core/tests/integration/knowledge.test.ts` に `contextOwner` の describe を足す。
+
+| # | 検証内容 | これが無いと通ってしまう退行 |
+|---|---|---|
+| 1 | owner が設定されている context で owner が返る | 常に null を返す実装 |
+| 2 | owner が null の context で null が返る | 空文字を返すなど、呼び出し側の分岐がずれる |
+| 3 | 存在しない context 名で null が返る(例外にならない) | 未登録の名前で落ちる |
+
+### 4.2 MCP 層
+
+`packages/mcp-server/tests/integration/review-tools.test.ts` に足す。このファイルは `InMemoryTransport` と elicitation 対応のテストクライアントを使っており、ダイアログのメッセージ本文まで検証できる。
+
+| # | 検証内容 | これが無いと通ってしまう退行 |
+|---|---|---|
+| 4 | owner 未設定の context で `approve_knowledge` を呼ぶと、ダイアログの本文に警告が含まれる | 4.4 の不具合そのもの |
+| 5 | owner 設定済みの context では警告が含まれない | 常に警告が出て、見分けがつかなくなる |
+| 6 | `reject_knowledge` でも警告が出る | 共通経路に入れたつもりが approve だけに効いている |
+| 7 | `verify_knowledge` でも警告が出る | 同上 |
+
+## 5. 本設計が扱わないもの
+
+- **確認者と owner の一致検査。** フィードバック 4.4 は「`KOTO_REVIEWER` の値が owner と一致するかの検査は無い」とも指摘するが、`KOTO_REVIEWER` は人名(`野中`)、`owner` は部署・ロール(`経理部`)で語彙が違う。機械的な突き合わせが成立しないため、やるなら owner の持ち方から設計し直す話になる
+- **`expert` が設定されている領域で、専門家確認を経ずに承認することへの警告。** 隣接する問題だが 4.4 の範囲外
+- owner 未設定で実行を止めること(2.1)
+- ダイアログから owner を設定できるようにすること。確認者名を自由入力にしたときクライアントのダイアログ上で矢印キーがカーソル移動になり操作が破綻した経緯がある(設計記録 2026-08-09 の追記)
+- 既存 8 領域の owner を埋めること。「誰が判定できるか」は組織のドメイン知識であり、ヒアリングで埋める(設計記録 2.5)
+- 4.5(レビューをセッションとして扱う概念)。フィードバックの優先度表に入っていない残項目
