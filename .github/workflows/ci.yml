@@ -102,9 +102,14 @@ jobs:
       - name: Start database (PGroonga + pgvector)
         run: docker compose up -d --build
       - name: Wait for database
+        # -h localhost で TCP を指定するのが要点。postgres の entrypoint は初期化スクリプトを
+        # 走らせる間、listen_addresses='' の一時サーバで動くため、Unix ソケット経由の
+        # pg_isready は初期化中でも成功してしまう。一方 docker は公開ポートを先に受け付けるので、
+        # 中でまだ TCP を待ち受けていない間に host から繋ぐと接続直後に切られ、テストが
+        # 「Connection terminated unexpectedly」で落ちる。TCP で待てばこの窓が閉じる。
         run: |
-          for i in $(seq 1 30); do
-            docker compose exec -T db pg_isready -U koto -d koto && exit 0
+          for i in $(seq 1 60); do
+            docker compose exec -T db pg_isready -U koto -d koto -h localhost && exit 0
             sleep 2
           done
           echo "database not ready" >&2

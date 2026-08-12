@@ -1,6 +1,7 @@
 import {
   addRelation,
   approve,
+  contextOwner,
   findEnglishNameConflicts,
   getKnowledge,
   hybridSearch,
@@ -51,6 +52,7 @@ async function reviewTarget(id: string): Promise<ReviewTarget | null> {
     title: String(rec.title),
     body: String(rec.body),
     status: String(rec.status),
+    context_owner: await contextOwner(String(rec.context)),
     review_notes: rec.review_notes == null ? null : String(rec.review_notes),
     english_name_conflicts: await findEnglishNameConflicts(id),
     updated_at: updatedAt,

@@ -7,6 +7,11 @@ export interface ReviewTarget {
   title: string;
   body: string;
   status: string;
+  /**
+   * コンテキストの承認責任者。null なら誰がこの知識を判定できるかが未定義であることを警告する。
+   * 設定されていれば、その責任者名をダイアログに表示する。
+   */
+  context_owner: string | null;
   review_notes: string | null;
   /** 同じ english_name を持つ他レコード。統合すべきか別概念かを人に判断させるために出す */
   english_name_conflicts: { context: string; type: string; title: string; status: string }[];
@@ -70,6 +75,10 @@ export async function requireHumanApproval(
   const excerpt = truncate(target.body, 300);
   const notesExcerpt = target.review_notes ? truncate(target.review_notes, 200) : null;
   const noteExcerpt = note ? truncate(note.text, 300) : null;
+  // 承認責任者の表示はレコード行の直後に置く。レコード情報は ID 取り違えの最終防波堤なので下に押し下げない
+  const ownerLine = target.context_owner
+    ? `\n承認責任者: ${target.context_owner}`
+    : "\n⚠ この領域には承認責任者(owner)が未設定です";
   // 衝突はレコード情報の直後に置く。統合の要否は本文を読んだ流れで判断されるため
   const conflicts = target.english_name_conflicts.length
     ? `\n\n同じ english_name の既存レコード: ${target.english_name_conflicts
@@ -78,7 +87,7 @@ export async function requireHumanApproval(
     : "";
   const result = await server.server.elicitInput(
     {
-      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})\n\n${excerpt}${conflicts}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note ? note.label : ""}: ${noteExcerpt}` : ""}`,
+      message: `${message}\n\n[${target.type}/${target.context}] ${target.title} (status: ${target.status})${ownerLine}\n\n${excerpt}${conflicts}${notesExcerpt ? `\n\n備考: ${notesExcerpt}` : ""}${noteExcerpt ? `\n\n${note ? note.label : ""}: ${noteExcerpt}` : ""}`,
       requestedSchema: {
         type: "object",
         properties: {
