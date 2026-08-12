@@ -47,7 +47,7 @@ owner が未設定でも実行は止めない。確認ダイアログの本文�
 
 「この判断を下せる人が定義されていない」という意味は、承認でも却下でも検証でも同じである。却下だけ外す案は採らない — 却下は「この知識は違う」という判定であり、判定である以上は同じ問題を持つ。
 
-### 2.3 警告はレコード行の直後に置く
+### 2.3 owner の行はレコード行の直後に置く
 
 ダイアログの本文は現在この順で組み立てられている(`elicit.ts` の `elicitInput`)。
 
@@ -62,7 +62,9 @@ owner が未設定でも実行は止めない。確認ダイアログの本文�
 <根拠ラベル>: <note 抜粋>
 ```
 
-警告はレコード行の直後、本文抜粋の前に置く。
+owner の行はレコード行の直後、本文抜粋の前に置く。owner 未設定なら警告、設定済みなら承認責任者を表示する(2.4 参照)。
+
+未設定の場合:
 
 ```
 この知識を承認しますか?
@@ -73,15 +75,33 @@ owner が未設定でも実行は止めない。確認ダイアログの本文�
 mindstock を利用する個人。世帯に所属し、在庫の記録者となる。…
 ```
 
+設定済みの場合:
+
+```
+この知識を承認しますか?
+
+[term/resident] 居住者 (status: draft)
+承認責任者: 経理部
+
+mindstock を利用する個人。世帯に所属し、在庫の記録者となる。…
+```
+
 context が書かれている行の注釈として付く形になり、レコード情報の位置を下に押し下げない。`elicit.ts` のコメントにあるとおり、レコード情報は ID 取り違えの最終防波堤なので、押し下げる置き方は避ける。
 
-### 2.4 警告文は 1 行だけにする
+### 2.4 owner の行は 1 行だけ、操作案内は入れない
+
+未設定・設定済みのどちらでも、owner の行は 1 行だけにする。
 
 ```
 ⚠ この領域には承認責任者(owner)が未設定です
 ```
+```
+承認責任者: 経理部
+```
 
 「`upsert_context` で設定できます」のような操作案内は**入れない**。ダイアログは判断のための場であり、操作を案内する場ではない。ダイアログを読むのは人間で、その場でツールを実行するわけでもない。設定方法は README 側に書く。
+
+**設定済みのときも表示する(2026-08-12 追記)。** 当初は未設定のときだけ警告を出し、設定済みなら何も表示しない案で実装したが、レビューで指摘を受けて改めた。表示しないと `context_owner` は「null のときだけ意味を持つ」フィールドになり、owner を全領域で埋め終わった状態 — この機能が目指すゴール — に到達したときに、ダイアログが判定権限について何も言わなくなる。承認しようとしている人が「この領域は経理部が責任者だが、自分が承認していいのか」を確かめる材料が消える。値はすでに `ReviewTarget` に載っているので、表示のための追加コストはゼロ。
 
 ## 3. 変更の内容
 
@@ -93,9 +113,11 @@ context が書かれている行の注釈として付く形になり、レコー
 /** コンテキストの承認責任者。未設定・未登録なら null */
 export async function contextOwner(name: string): Promise<string | null> {
   const res = await pool.query(`select owner from contexts where name = $1`, [name]);
-  return (res.rows[0]?.owner as string | null) ?? null;
+  return (res.rows[0]?.owner as string | null) || null;
 }
 ```
+
+`?? null` ではなく `|| null` を使う。owner が空文字("")の行は `upsert_context` の入力検証(`.min(1)` 無し)を通って実際に保存されうるため、`null` / `undefined` しか畳まない `?? null` では空文字がそのまま返ってしまう。
 
 未登録の context 名でも `null` を返す。`knowledge.context` には `references contexts(name)` の外部キーがある(`docker/db/init/001_schema.sql:26`)ので、実際のレコードから引く限り未登録にはならないが、呼び出し側で分岐が増えないようにする。
 
@@ -106,14 +128,19 @@ export async function contextOwner(name: string): Promise<string | null> {
 `ReviewTarget` に 1 フィールド足す。
 
 ```ts
-  /** コンテキストの承認責任者。null なら誰が判定できるか未定義であることを警告する */
+  /**
+   * コンテキストの承認責任者。null なら誰がこの知識を判定できるかが未定義であることを警告する。
+   * 設定されていれば、その責任者名をダイアログに表示する。
+   */
   context_owner: string | null;
 ```
 
-メッセージの組み立てで、レコード行の直後に警告行を挟む。
+メッセージの組み立てで、レコード行の直後に owner の行を挟む。未設定なら警告、設定済みなら承認責任者を表示する。
 
 ```ts
-const ownerWarning = target.context_owner ? "" : "\n⚠ この領域には承認責任者(owner)が未設定です";
+const ownerLine = target.context_owner
+  ? `\n承認責任者: ${target.context_owner}`
+  : "\n⚠ この領域には承認責任者(owner)が未設定です";
 ```
 
 ### 3.3 `packages/mcp-server/src/server.ts`
@@ -140,6 +167,7 @@ const ownerWarning = target.context_owner ? "" : "\n⚠ この領域には承認
 | 1 | owner が設定されている context で owner が返る | 常に null を返す実装 |
 | 2 | owner が null の context で null が返る | 空文字を返すなど、呼び出し側の分岐がずれる |
 | 3 | 存在しない context 名で null が返る(例外にならない) | 未登録の名前で落ちる |
+| 4 | owner が空文字の context で null が返る | `?? null` のように null/undefined しか畳まない実装 |
 
 ### 4.2 MCP 層
 
@@ -147,10 +175,10 @@ const ownerWarning = target.context_owner ? "" : "\n⚠ この領域には承認
 
 | # | 検証内容 | これが無いと通ってしまう退行 |
 |---|---|---|
-| 4 | owner 未設定の context で `approve_knowledge` を呼ぶと、ダイアログの本文に警告が含まれる | 4.4 の不具合そのもの |
-| 5 | owner 設定済みの context では警告が含まれない | 常に警告が出て、見分けがつかなくなる |
-| 6 | `reject_knowledge` でも警告が出る | 共通経路に入れたつもりが approve だけに効いている |
-| 7 | `verify_knowledge` でも警告が出る | 同上 |
+| 5 | owner 未設定の context で `approve_knowledge` を呼ぶと、ダイアログの本文に警告が含まれる | 4.4 の不具合そのもの |
+| 6 | owner 設定済みの context では警告が含まれず、代わりに `承認責任者: <owner>` が含まれる | 常に警告が出る、または設定済みでも何も表示されず判定権限の材料が消える |
+| 7 | `reject_knowledge` でも警告が出る | 共通経路に入れたつもりが approve だけに効いている |
+| 8 | `verify_knowledge` でも警告が出る | 同上 |
 
 ## 5. 本設計が扱わないもの
 

@@ -389,7 +389,8 @@ export async function setVerification(
 
 /**
  * コンテキストの承認責任者。未設定・未登録なら null。
- * 承認ダイアログで「誰がこの知識の正しさを判定できるか」が未定義であることを警告するために使う。
+ * 承認ダイアログで、未設定なら「誰がこの知識の正しさを判定できるか」が未定義であることを
+ * 警告するために、設定済みならその承認責任者を表示するために使う。
  */
 export async function contextOwner(name: string): Promise<string | null> {
   const res = await pool.query(`select owner from contexts where name = $1`, [name]);
