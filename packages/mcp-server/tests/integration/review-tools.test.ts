@@ -479,7 +479,7 @@ describe("get_pending_reviews", () => {
   });
 });
 
-describe("承認ダイアログの owner 未設定警告", () => {
+describe("承認ダイアログの owner 表示", () => {
   test("owner 未設定の領域では警告が出る", async () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     let shownMessage = "";
@@ -501,7 +501,7 @@ describe("承認ダイアログの owner 未設定警告", () => {
     );
   });
 
-  test("owner が設定されていれば警告は出ない", async () => {
+  test("owner が設定されていれば警告の代わりに責任者が出る", async () => {
     const id = await seedDraft({ context: "sales", title: "受注" });
     await pool.query("update contexts set owner = $2 where name = $1", ["sales", "経理部"]);
     let shownMessage = "";
@@ -515,7 +515,8 @@ describe("承認ダイアログの owner 未設定警告", () => {
       arguments: { id, note: "コードで裏を取った" },
     });
 
-    assert.ok(!shownMessage.includes("承認責任者"));
+    assert.ok(!shownMessage.includes("⚠ この領域には承認責任者(owner)が未設定です"));
+    assert.ok(shownMessage.includes("承認責任者: 経理部"));
   });
 
   // 3 ツールは同じ requireHumanApproval を通る。承認だけに効く実装になっていないことを固定する

@@ -393,7 +393,7 @@ export async function setVerification(
  */
 export async function contextOwner(name: string): Promise<string | null> {
   const res = await pool.query(`select owner from contexts where name = $1`, [name]);
-  return (res.rows[0]?.owner as string | null) ?? null;
+  return (res.rows[0]?.owner as string | null) || null;
 }
 
 export async function listContexts() {

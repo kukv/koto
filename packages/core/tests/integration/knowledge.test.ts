@@ -673,4 +673,11 @@ describe("contextOwner", () => {
   test("存在しない context 名でも null を返す(例外にしない)", async () => {
     assert.equal(await contextOwner("存在しない領域"), null);
   });
+
+  // upsertContext の coalesce は空文字を null 扱いしないため、DB に空文字が入る経路がある
+  test("owner が空文字なら null を返す", async () => {
+    await seedKnowledge({ context: "sales", title: "受注" });
+    await pool.query("update contexts set owner = '' where name = $1", ["sales"]);
+    assert.equal(await contextOwner("sales"), null);
+  });
 });
