@@ -49,3 +49,6 @@ coverage/
 packages/mcp-server/koto-mcp.mjs
 
 backups/
+
+### backlog.md ###
+docs/backlog/.locks/
