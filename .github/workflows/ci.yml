@@ -84,6 +84,13 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
+      # サプライチェーン攻撃の検知に向けた計測(analyze モード)。
+      # syscall を capture して falco-analyze ジョブで通信先・プロセスを可視化する。
+      # 検知しても fail させない。
+      - name: Start Falco
+        uses: falcosecurity/falco-actions/start@558a3ceeee9403e1c875ffbeb704c34c93e24752 # main(タグ未発行のため commit を固定)
+        with:
+          mode: analyze
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -108,7 +115,7 @@ jobs:
         # 中でまだ TCP を待ち受けていない間に host から繋ぐと接続直後に切られ、テストが
         # 「Connection terminated unexpectedly」で落ちる。TCP で待てばこの窓が閉じる。
         run: |
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             docker compose exec -T db pg_isready -U koto -d koto -h localhost && exit 0
             sleep 2
           done
@@ -117,3 +124,27 @@ jobs:
           exit 1
       - name: Test
         run: pnpm test # vitest run(koto_test を作り直して単体+DB統合を検証)
+      - name: Stop Falco
+        if: always()
+        uses: falcosecurity/falco-actions/stop@558a3ceeee9403e1c875ffbeb704c34c93e24752 # main(タグ未発行のため commit を固定)
+        with:
+          mode: analyze
+
+  # capture を解析して、ジョブ中の通信先 / DNS / プロセスをジョブサマリに出す。
+  # 収集が目的のため、検知があっても fail させない。
+  falco-analyze:
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # 計測が目的のジョブなので、capture が無い等で失敗しても CI をブロックしない
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - name: Analyze
+        uses: falcosecurity/falco-actions/analyze@558a3ceeee9403e1c875ffbeb704c34c93e24752 # main(タグ未発行のため commit を固定)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
