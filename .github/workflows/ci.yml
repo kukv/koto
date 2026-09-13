@@ -108,7 +108,7 @@ jobs:
         # 中でまだ TCP を待ち受けていない間に host から繋ぐと接続直後に切られ、テストが
         # 「Connection terminated unexpectedly」で落ちる。TCP で待てばこの窓が閉じる。
         run: |
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             docker compose exec -T db pg_isready -U koto -d koto -h localhost && exit 0
             sleep 2
           done

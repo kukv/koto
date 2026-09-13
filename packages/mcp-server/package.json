@@ -24,12 +24,12 @@
   "dependencies": {
     "@kukv/koto-core": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "zod": "4.4.3"
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@kukv/koto-tsconfig": "workspace:*",
     "@types/node": "24.13.3",
-    "esbuild": "0.28.1",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2",
     "vitest": "^4.1.11"
   }
