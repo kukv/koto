@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  nanoid@3: ^6.0.0
+  nanoid@3: 6.0.1
 
 importers:
 
