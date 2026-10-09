@@ -22,7 +22,7 @@
     "typecheck:tests": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "pg": "8.23.0"
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@kukv/koto-tsconfig": "workspace:*",
