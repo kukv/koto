@@ -1,7 +1,7 @@
 # 公式 postgres イメージをベースに自前で拡張を導入する。
 # - PGroonga: PGDG に無いため Groonga プロジェクトの apt リポジトリから
 # - pgvector: 公式イメージに設定済みの PGDG リポジトリから
-FROM postgres:18
+FROM postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates wget \
