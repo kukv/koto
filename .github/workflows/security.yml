@@ -36,7 +36,7 @@ jobs:
 
       # 人のレビューで見えない内容(不可視 Unicode・同形異字・AI 指示ファイルの
       # 隠しマークアップ・.gitattributes による差分隠し)を検知する
-      - uses: kukv/hidden-content-scan@4643ed6ddf226db042fbce9a41a7f41a30aea6b6 # v1.0.0
+      - uses: kukv/hidden-content-scan@21d0152c2308d6e1f24351e22d4eed2e94c41118 # v1.0.1
 
   secrets:
     if: github.event_name != 'schedule'
@@ -122,7 +122,7 @@ jobs:
           persist-credentials: false
 
       # lockfile を再帰的に自動検出する。リポ直下の osv-scanner.toml は自動適用される
-      - uses: google/osv-scanner-action/osv-scanner-action@a345acffa64b0eaede81a3d9aae6141214d9c8fc # v2.6.0
+      - uses: google/osv-scanner-action/osv-scanner-action@b1d267aea5211fa648d9d442fa64b90dbdcbdd36 # v2.7.0
         with:
           scan-args: |-
             --recursive
@@ -137,7 +137,7 @@ jobs:
       contents: read
     env:
       # renovate: datasource=pypi depName=zizmor
-      ZIZMOR_VERSION: 1.30.1
+      ZIZMOR_VERSION: 1.31.1
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
